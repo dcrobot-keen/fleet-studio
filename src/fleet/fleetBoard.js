@@ -5,6 +5,7 @@
 // 오류 열)는 M2의 로봇 상세 화면으로 간다.
 import { forgetFleetRobot, sendFleetInstantAction, subscribeFleetStream, getRobotOrders, getFleetEvents } from './fleetApi.js';
 import { listRobots } from '../robots/robotApi.js';
+import { activeProjectName } from '../appShared.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -374,9 +375,17 @@ export function createFleetBoard(containerEl, { onSelect = () => {}, onStatus = 
     return entry;
   }
 
+  // 다른 현장(pathfinder 프로젝트)의 로봇은 같은 브로커를 공유해도 이 보드에 안 보여야 한다
+  // (liveRobotPose.js/site3dView.js와 같은 규칙: mapId 없으면 예전처럼 항상 보여준다).
+  function belongsHere(r) {
+    return !r.position?.mapId || r.position.mapId === activeProjectName;
+  }
+
   function render() {
     const now = Date.now();
-    const rows = Array.from(robots.values()).sort((a, b) => a.serialNumber.localeCompare(b.serialNumber));
+    const rows = Array.from(robots.values())
+      .filter(belongsHere)
+      .sort((a, b) => a.serialNumber.localeCompare(b.serialNumber));
     title.textContent = `로봇 ${rows.length}`;
     brokerDot.textContent = brokerStatus.connected ? '브로커 연결됨' : '브로커 끊김';
     brokerDot.classList.toggle('on', brokerStatus.connected);

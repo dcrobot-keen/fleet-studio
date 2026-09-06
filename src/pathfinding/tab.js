@@ -22,6 +22,7 @@ import ScaleLine from 'ol/control/ScaleLine.js';
 import { indoorProjection, MAP_SIZE_X, MAP_SIZE_Y, pcdSource, nodeLinkSource, importedObstacleSource, liveRobotPoseSource, activeProjectName, activeProjectFloorImage } from '../appShared.js';
 import { sendFleetOrder, subscribeFleetStream, sendFleetInstantAction } from '../fleet/fleetApi.js';
 import { createFleetBoard } from '../fleet/fleetBoard.js';
+import { setSelectedRobotSerial } from '../fleet/selectedRobot.js';
 import { createOperateSidePanel } from '../fleet/operateSidePanel.js';
 import { buildGridLayer } from '../grid2d.js';
 import { nodeLinkStyle } from '../nodeLinkStyle.js';
@@ -942,6 +943,7 @@ export function createPathfindingTab(mapEl, panelEl, mode, { variant = 'demo', s
       onSelect: (r) => {
         if (r?.registry && commandRobotsById.has(r.registry.id)) commandSelect.value = r.registry.id;
         const serial = r?.serialNumber ?? null;
+        setSelectedRobotSerial(serial); // 지도 마커에 선택 표시(liveRobotPose.js)
         if (serial !== lastSelectedSerial) {
           lastSelectedSerial = serial;
           commandStatus.textContent = r ? `${r.registry?.name ?? r.serialNumber} 선택됨` : '';

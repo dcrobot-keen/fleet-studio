@@ -16,8 +16,20 @@ export const REFERENCE_SIZE_M = 0.5;
 const BASE_ICON_SCALE = 0.4;
 const BASE_CIRCLE_RADIUS = 7;
 
-function numberLabelStyle(label) {
+// labelPlacement 'overlay'(기본, 예전부터 있던 동작): 마커 중심에 겹쳐서 "아이콘 위 번호"처럼(길찾기
+// 데모의 짧은 순번용). 'below': 아이콘 아래로 내리고 배경을 깔아 긴 글자(로봇 이름 등)도 안 겹치고 읽히게.
+function labelTextStyle(label, placement) {
   if (label === undefined || label === null) return undefined;
+  if (placement === 'below') {
+    return new Text({
+      text: String(label),
+      font: '11px sans-serif',
+      fill: new Fill({ color: '#fff' }),
+      stroke: new Stroke({ color: '#000', width: 3 }),
+      offsetY: 14,
+      textBaseline: 'top',
+    });
+  }
   return new Text({
     text: String(label),
     font: 'bold 12px sans-serif',
@@ -32,10 +44,27 @@ function numberLabelStyle(label) {
 export function robotMarkerStyle(
   color,
   iconSrc,
-  { paused = false, sizeMeters = REFERENCE_SIZE_M, label, rotation, dashed = false } = {}
+  { paused = false, sizeMeters = REFERENCE_SIZE_M, label, labelPlacement = 'overlay', rotation, dashed = false, selected = false } = {}
 ) {
   const sizeRatio = sizeMeters / REFERENCE_SIZE_M;
-  const text = numberLabelStyle(label);
+  const text = labelTextStyle(label, labelPlacement);
+  const styles = [];
+
+  // 선택 표시: 아이콘보다 한 단계 큰 반투명 고리를 아이콘 뒤에 깐다. 회전(rotation)은 안 준다 --
+  // 로봇 몸체가 도는 것과 헷갈리지 않게 고리는 항상 정지된 원으로.
+  if (selected) {
+    const ringRadius = Math.min(30, Math.max(14, BASE_CIRCLE_RADIUS * sizeRatio * 2.1));
+    styles.push(
+      new Style({
+        image: new CircleStyle({
+          radius: ringRadius,
+          fill: new Fill({ color: 'rgba(79, 209, 197, 0.18)' }),
+          stroke: new Stroke({ color: '#4fd1c5', width: 2 }),
+        }),
+        zIndex: -1,
+      })
+    );
+  }
 
   if (iconSrc) {
     // ol/style/Icon의 size 옵션은 "스프라이트 시트에서 잘라올 영역" 지정용이라
@@ -43,22 +72,23 @@ export function robotMarkerStyle(
     // 명시해두므로 자연 크기를 그대로 읽어 scale만으로 최종 크기를 정한다.
     // 하한 0.35(≈22px): TB3 크기(0.2m)의 시뮬레이터 로봇도 아이콘이 점이 아니라 아이콘으로 보이게.
     const scale = Math.min(1.2, Math.max(0.35, BASE_ICON_SCALE * sizeRatio));
-    return new Style({
-      image: new Icon({ src: iconSrc, scale, opacity: paused ? 0.35 : 1, rotation }),
-      text,
-    });
+    styles.push(new Style({ image: new Icon({ src: iconSrc, scale, opacity: paused ? 0.35 : 1, rotation }), text }));
+    return styles;
   }
   const radius = Math.min(18, Math.max(4, BASE_CIRCLE_RADIUS * sizeRatio));
-  return new Style({
-    image: new CircleStyle({
-      radius,
-      fill: new Fill({ color: paused ? 'rgba(150,150,150,0.6)' : color }),
-      // dashed: 시뮬레이터 로봇(실제로 존재하지 않는 가상 개체)을 실제 로봇과
-      // 혼동하지 않도록, 색상 외에도 테두리 자체를 점선으로 구분한다.
-      stroke: new Stroke({ color: '#fff', width: 2, lineDash: dashed ? [3, 2] : undefined }),
-    }),
-    text,
-  });
+  styles.push(
+    new Style({
+      image: new CircleStyle({
+        radius,
+        fill: new Fill({ color: paused ? 'rgba(150,150,150,0.6)' : color }),
+        // dashed: 시뮬레이터 로봇(실제로 존재하지 않는 가상 개체)을 실제 로봇과
+        // 혼동하지 않도록, 색상 외에도 테두리 자체를 점선으로 구분한다.
+        stroke: new Stroke({ color: '#fff', width: 2, lineDash: dashed ? [3, 2] : undefined }),
+      }),
+      text,
+    })
+  );
+  return styles;
 }
 
 export function randomPathColor() {

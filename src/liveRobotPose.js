@@ -13,6 +13,7 @@ import Point from 'ol/geom/Point.js';
 import { robotMarkerStyle, REFERENCE_SIZE_M } from './pathfinding/robotAnimation.js';
 import { listRobots } from './robots/robotApi.js';
 import { activeProjectName } from './appShared.js';
+import { getSelectedRobotSerial, onSelectedRobotChange } from './fleet/selectedRobot.js';
 
 const RECONNECT_DELAY_MS = 2000;
 const UNKNOWN_ROBOT_COLOR = '#e91e63';
@@ -77,6 +78,21 @@ export function startLiveRobotPoseTracking(source) {
     if (pose && featuresByRobotId.has(robotId)) applyPose(robotId, pose);
   }
 
+  // fleetBoard.js에서 고른 로봇을 지도 마커에도 반영한다(selectedRobot.js 참고). truth 고스트
+  // 마커는 "<serial>-truth" 키를 쓰므로, 선택이 바뀌면 실제 마커와 고스트 마커 둘 다 다시 그린다.
+  let selectedSerial = getSelectedRobotSerial();
+  function restyleForSerial(serial) {
+    if (!serial) return;
+    restyle(serial);
+    restyle(`${serial}-truth`);
+  }
+  const unsubscribeSelection = onSelectedRobotChange((next) => {
+    const prev = selectedSerial;
+    selectedSerial = next;
+    restyleForSerial(prev);
+    restyleForSerial(next);
+  });
+
   // pose.mapId 는 로봇이 속한 현장(pathfinder 프로젝트/시뮬레이터 월드) 이름이다(sim-driver의
   // MAP_ID 또는 시뮬레이터 월드 이름, VDA5050 state의 agvPosition.mapId). 다른 현장의 로봇이
   // 이 지도 위에 같은 (x,y)로 잘못 겹쳐 보이지 않도록, 있으면 현재 현장과 대조한다. 없으면
@@ -118,8 +134,12 @@ export function startLiveRobotPoseTracking(source) {
           // OL Icon의 rotation은 화면 기준 시계방향(라디안), pathfinder 좌표계는
           // 수학 표준(반시계 방향이 양의 각도)이라 부호를 뒤집는다.
           rotation: -pose.headingRad,
-          label: truth ? `GT · ${baseId}` : sim ? `SIM · ${robot?.name ?? robotId}` : robot?.name ?? robotId,
+          // truth 고스트는 라벨 없이(실제 마커와 겹치는 자리라 글자까지 겹치면 더 안 보인다) 점으로만 구분한다.
+          // 실제/SIM 라벨은 아이콘 아래로 내려서(labelPlacement) odometry/시뮬레이터 마커끼리도 안 겹치게 한다.
+          label: truth ? undefined : sim ? `SIM · ${robot?.name ?? robotId}` : robot?.name ?? robotId,
+          labelPlacement: 'below',
           dashed: sim || truth,
+          selected: baseId === selectedSerial,
         }
       )
     );
@@ -146,6 +166,7 @@ export function startLiveRobotPoseTracking(source) {
     close() {
       closed = true;
       ws?.close();
+      unsubscribeSelection();
     },
   };
 }

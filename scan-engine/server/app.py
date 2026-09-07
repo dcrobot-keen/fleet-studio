@@ -10,6 +10,7 @@ dependency on FastAPI so the CLI/offline install path is unaffected.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import shutil
 import sys
@@ -23,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from studio.groups import groups_root, prepare as prepare_group
-from studio.project import PROJECTS_ROOT, create_project, list_projects
+from studio.project import PROJECTS_ROOT, create_project, delete_project, list_projects
 from studio.status import read_status, write_status
 from server.align import align_geojson, align_image
 from server.groups_api import router as groups_router
@@ -78,36 +79,23 @@ def api_create_project(name: str = Form(...)) -> dict:
     return {"name": name}
 
 
-@app.post("/api/projects/{name}/process", status_code=202, response_model=schemas.ProcessStarted)
-async def api_process_project(
+def _extract_scan_upload(
     name: str,
-    usdz: UploadFile | None = File(None),
-    scan_file: UploadFile | None = File(None),
-    robot_map_pgm: UploadFile | None = File(None),
-    robot_map_yaml: UploadFile | None = File(None),
-    trajectory: UploadFile | None = File(None),
-    remove_isolated_clusters: bool = Form(False),
-    isolated_cluster_min_area: float = Form(0.3),
-    classify: bool = Form(False),
+    project_dir: Path,
+    uploads_dir: Path,
+    filename: str,
+    raw_bytes: bytes,
+    is_zip: bool,
 ) -> dict:
-    file_to_process = scan_file if scan_file is not None else usdz
-    if file_to_process is None:
-        raise HTTPException(status_code=422, detail="scan_file 또는 usdz 파일이 필요합니다.")
-
-    project_dir = PROJECTS_ROOT / name
-    if not project_dir.exists():
-        create_project(name)
-    if is_running(name):
-        raise HTTPException(status_code=409, detail=f"a processing job is already running for project {name!r}")
-
-    uploads_dir = project_dir / "uploads"
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
-    filename = file_to_process.filename or "scan.usdz"
-    raw_bytes = await file_to_process.read()
-
-    # Check if uploaded file is a zip archive
-    is_zip = filename.lower().endswith(".zip") or (file_to_process.content_type and "zip" in file_to_process.content_type)
+    """압축 해제/디스크 쓰기 등 순수 동기 작업만 담당한다. 스캔 zip은 수백MB~1GB급이라 이 안의
+    작업이 수십 초~몇 분 걸릴 수 있는데, 호출부(api_process_project)에서 asyncio.to_thread로
+    돌려야 그 동안 이벤트 루프(서버 전체)가 멈추지 않는다 -- 예전엔 이걸 그대로 코루틴 안에서
+    돌려서, 큰 zip을 올리면 이 요청뿐 아니라 서버의 다른 요청(다른 프로젝트 상태 조회 등)까지
+    전부 응답이 끊긴 것처럼 보였다.
+    반환: group zip이면 {"kind": "group", "response": {...}}(그대로 클라이언트에 반환),
+    아니면 {"kind": "single", "usdz_path": ..., "trajectory_path": ...}
+    (trajectory_path는 zip 안 poses.jsonl로 찾은 것 -- 별도 trajectory 필드가 오면 호출부에서 덮어씀).
+    """
     if is_zip:
         try:
             with zipfile.ZipFile(io.BytesIO(raw_bytes)) as z:
@@ -142,11 +130,14 @@ async def api_process_project(
                         print(f"[Warning] prepare_group({name}) during zip upload: {exc}")
 
                     return {
-                        "status": "group_ready",
-                        "type": "group",
-                        "group": name,
-                        "group_url": f"/groups/{name}",
-                        "message": f"다중 스캔 프로젝트 [{name}] 등록 완료 (정합 워크스페이스 준비됨)",
+                        "kind": "group",
+                        "response": {
+                            "status": "group_ready",
+                            "type": "group",
+                            "group": name,
+                            "group_url": f"/groups/{name}",
+                            "message": f"다중 스캔 프로젝트 [{name}] 등록 완료 (정합 워크스페이스 준비됨)",
+                        },
                     }
 
                 # 2) Single Scan zip (contains scan.usdz or other files)
@@ -179,26 +170,61 @@ async def api_process_project(
                     shutil.copyfile(floorplan_pngs[0], project_dir / "floorplan.png")
                     shutil.copyfile(floorplan_jsons[0], project_dir / "floorplan.json")
 
-                # Check for poses / trajectory
+                # Check for poses inside the zip (an explicit trajectory upload takes priority; see caller)
                 trajectory_path = None
-                if trajectory is not None:
-                    trajectory_path = uploads_dir / "trajectory.json"
-                    trajectory_path.write_bytes(await trajectory.read())
-                else:
-                    poses_files = list(uploads_dir.glob("**/poses.jsonl"))
-                    if poses_files:
-                        trajectory_path = poses_files[0]
+                poses_files = list(uploads_dir.glob("**/poses.jsonl"))
+                if poses_files:
+                    trajectory_path = poses_files[0]
         except zipfile.BadZipFile as exc:
             raise HTTPException(status_code=400, detail=f"손상된 zip 파일입니다: {exc}") from exc
     else:
         # Standard single usdz/ply upload
         usdz_path = uploads_dir / filename
         usdz_path.write_bytes(raw_bytes)
-
         trajectory_path = None
-        if trajectory is not None:
-            trajectory_path = uploads_dir / "trajectory.json"
-            trajectory_path.write_bytes(await trajectory.read())
+
+    return {"kind": "single", "usdz_path": usdz_path, "trajectory_path": trajectory_path}
+
+
+@app.post("/api/projects/{name}/process", status_code=202, response_model=schemas.ProcessStarted)
+async def api_process_project(
+    name: str,
+    usdz: UploadFile | None = File(None),
+    scan_file: UploadFile | None = File(None),
+    robot_map_pgm: UploadFile | None = File(None),
+    robot_map_yaml: UploadFile | None = File(None),
+    trajectory: UploadFile | None = File(None),
+    remove_isolated_clusters: bool = Form(False),
+    isolated_cluster_min_area: float = Form(0.3),
+    classify: bool = Form(False),
+) -> dict:
+    file_to_process = scan_file if scan_file is not None else usdz
+    if file_to_process is None:
+        raise HTTPException(status_code=422, detail="scan_file 또는 usdz 파일이 필요합니다.")
+
+    project_dir = PROJECTS_ROOT / name
+    if not project_dir.exists():
+        create_project(name)
+    if is_running(name):
+        raise HTTPException(status_code=409, detail=f"a processing job is already running for project {name!r}")
+
+    uploads_dir = project_dir / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = file_to_process.filename or "scan.usdz"
+    raw_bytes = await file_to_process.read()
+
+    # Check if uploaded file is a zip archive
+    is_zip = filename.lower().endswith(".zip") or (file_to_process.content_type and "zip" in file_to_process.content_type)
+    result = await asyncio.to_thread(_extract_scan_upload, name, project_dir, uploads_dir, filename, raw_bytes, is_zip)
+    if result["kind"] == "group":
+        return result["response"]
+
+    usdz_path = result["usdz_path"]
+    trajectory_path = result["trajectory_path"]
+    if trajectory is not None:
+        trajectory_path = uploads_dir / "trajectory.json"
+        trajectory_path.write_bytes(await trajectory.read())
 
     robot_map_prefix = None
     if robot_map_pgm is not None and robot_map_yaml is not None:
@@ -236,6 +262,16 @@ def api_get_status(name: str) -> dict:
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail=f"project not found: {name}")
     return read_status(project_dir)
+
+
+@app.delete("/api/projects/{name}", status_code=204)
+def api_delete_project(name: str) -> None:
+    if is_running(name):
+        raise HTTPException(status_code=409, detail=f"a processing job is still running for project {name!r}")
+    try:
+        delete_project(name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/projects/{name}/align/geojson")

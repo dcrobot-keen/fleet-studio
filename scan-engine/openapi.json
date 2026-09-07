@@ -64,6 +64,36 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Api Delete Group",
+        "operationId": "api_delete_group_api_groups__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/groups/{name}/prepare": {
@@ -379,6 +409,97 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SaveAlignmentResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{name}/alignment/history": {
+      "get": {
+        "summary": "Api Alignment History",
+        "operationId": "api_alignment_history_api_groups__name__alignment_history_get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AlignmentHistoryEntry"
+                  },
+                  "title": "Response Api Alignment History Api Groups  Name  Alignment History Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{name}/alignment/history/{timestamp}": {
+      "get": {
+        "summary": "Api Alignment History Entry",
+        "operationId": "api_alignment_history_entry_api_groups__name__alignment_history__timestamp__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "timestamp",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GroupAlignmentDoc"
                 }
               }
             }
@@ -721,6 +842,38 @@
         }
       }
     },
+    "/api/projects/{name}": {
+      "delete": {
+        "summary": "Api Delete Project",
+        "operationId": "api_delete_project_api_projects__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects/{name}/align/geojson": {
       "post": {
         "summary": "Api Align Geojson",
@@ -926,6 +1079,33 @@
           "yawRadians"
         ],
         "title": "AlignmentEntry"
+      },
+      "AlignmentHistoryEntry": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "scans": {
+            "type": "integer",
+            "title": "Scans"
+          },
+          "approved": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Approved"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "scans",
+          "approved"
+        ],
+        "title": "AlignmentHistoryEntry",
+        "description": "One past save, newest first (GET /api/groups/{name}/alignment/history) -- a snapshot\ntaken right before that save overwrote group_alignment.json, so it's always restorable."
       },
       "AlignmentMetrics": {
         "properties": {

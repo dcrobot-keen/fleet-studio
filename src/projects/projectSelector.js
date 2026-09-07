@@ -3,7 +3,10 @@
 // 지도/뷰 인스턴스를 그 자리에서 다시 만드는 게 아니라 새로고침으로 전환하는
 // 이유는 appShared.js 헤더 주석 참고.
 import { allProjects, activeProjectId } from '../appShared.js';
-import { createProject } from './projectApi.js';
+import { createProject, deleteProject } from './projectApi.js';
+
+// server/projects.mjs의 DEFAULT_PROJECT_ID와 같은 값 -- 이 프로젝트는 항상 있고 삭제도 안 된다.
+const DEFAULT_PROJECT_ID = 'default';
 
 function navigateToProject(id) {
   const url = new URL(location.href);
@@ -101,6 +104,27 @@ export function createProjectSelector(container) {
   newBtn.title = '새로운 빈 현장 프로젝트를 생성합니다.';
   newBtn.addEventListener('click', () => openCreateForm(container));
 
+  // 드롭다운에서 지금 고른 현장을 지운다(기본 프로젝트는 서버가 거절하므로 버튼 자체를 비활성화).
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'project-delete-button';
+  delBtn.textContent = '🗑 삭제';
+  delBtn.title = '선택된 현장을 삭제합니다. 기본 프로젝트는 삭제할 수 없습니다.';
+  delBtn.disabled = activeProjectId === DEFAULT_PROJECT_ID;
+  delBtn.addEventListener('click', async () => {
+    const current = allProjects.find((p) => p.id === activeProjectId);
+    if (!current) return;
+    if (!confirm(`"${current.name}" 현장을 삭제할까요?\n노드/링크 등 이 현장의 데이터가 사라지며 되돌릴 수 없습니다.`)) return;
+    delBtn.disabled = true;
+    try {
+      await deleteProject(activeProjectId);
+      navigateToProject(DEFAULT_PROJECT_ID);
+    } catch (err) {
+      alert(`삭제 실패: ${err.message}`);
+      delBtn.disabled = false;
+    }
+  });
+
   // 슬라이스맵 파일 · 스캔 · PCD 는 지도 리본의 "가져오기"(src/imports) 하나로 들어온다.
-  container.append(select, newBtn);
+  container.append(select, newBtn, delBtn);
 }

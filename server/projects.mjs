@@ -11,7 +11,7 @@
 // 프로젝트(맵)를 오갈 수 있는 하나의 카탈로그로 보는 쪽이 더 현실적이다.
 import express from 'express';
 import { JSONFilePreset } from 'lowdb/node';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -206,6 +206,26 @@ export async function createProjectsRouter() {
       return;
     }
     res.json(project);
+  });
+
+  // 프로젝트 레코드 + 그 프로젝트 전용 폴더(nodelink.geojson 등, PROJECTS_DATA_DIR/<id>)만 지운다.
+  // 기본 프로젝트는 항상 존재해야 하는 레거시 특수 케이스라 못 지우게 막는다. 로봇 등록/시뮬레이터
+  // 설정/가져온 장애물 파일(data/imported/<room>.*)처럼 프로젝트 id를 참조만 하는 다른 데이터는
+  // 일부러 안 건드린다 -- 여러 하위 시스템에 걸친 연쇄 삭제까지 하기엔 위험이 더 크다.
+  router.delete('/projects/:id', async (req, res) => {
+    if (req.params.id === DEFAULT_PROJECT_ID) {
+      res.status(400).json({ error: '기본 프로젝트는 삭제할 수 없습니다.' });
+      return;
+    }
+    const idx = db.data.projects.findIndex((p) => p.id === req.params.id);
+    if (idx === -1) {
+      res.status(404).json({ error: '프로젝트를 찾을 수 없습니다.' });
+      return;
+    }
+    db.data.projects.splice(idx, 1);
+    await db.write();
+    await rm(resolve(PROJECTS_DATA_DIR, req.params.id), { recursive: true, force: true });
+    res.status(204).end();
   });
 
   router.patch('/projects/:id/approve', async (req, res) => {

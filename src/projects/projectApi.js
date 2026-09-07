@@ -11,6 +11,18 @@ export async function listProjects() {
 }
 
 /**
+ * 프로젝트(현장)를 삭제한다. 기본 프로젝트는 서버가 거절한다.
+ * @param {string} id
+ */
+export async function deleteProject(id) {
+  const res = await fetch(`${API_URL}/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `프로젝트 삭제 실패 (${res.status})`);
+  }
+}
+
+/**
  * @param {{name:string, sizeX?:number, sizeY?:number}} project
  * @returns {Promise<{id:string,name:string,sizeX:number,sizeY:number}>}
  */

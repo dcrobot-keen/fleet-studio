@@ -67,6 +67,21 @@ def test_library() -> None:
         saved = json.loads((root / "demo/group_alignment.json").read_text(encoding="utf-8"))
         check(saved["alignments"]["scan_B"]["method"] == "pins", "alignment file rewritten with the page's values")
 
+        # 저장 기록: 매 save_alignment 호출은 "그 직전" 파일을 .history/ 에 스냅샷해야 -- 잘못
+        # 저장해도 몇 걸음 전 상태로 돌아갈 수 있다(정합 워크스페이스에 되돌리기 안전망이 없다는
+        # 사용자 피드백으로 추가됨).
+        hist = groups.list_alignment_history("demo", root=root)
+        check(len(hist) == 1, f"first save snapshots the pre-save (GUESS) state -- {len(hist)} entries")
+        check(hist[0]["approved"] == [], "snapshot reflects the state before approval, not after")
+        entry = groups.get_alignment_history_entry("demo", hist[0]["timestamp"], root=root)
+        check(entry["alignments"]["scan_B"]["method"] == "app", "history entry is the exact pre-save document (still GUESS/'app')")
+
+        doc2 = json.loads((root / "demo/group_alignment.json").read_text(encoding="utf-8"))
+        doc2["alignments"]["scan_B"]["offsetX"] += 0.5
+        groups.save_alignment("demo", doc2, root=root, publish=publish)
+        hist2 = groups.list_alignment_history("demo", root=root)
+        check(len(hist2) == 2 and hist2[0]["timestamp"] > hist2[1]["timestamp"], "second save adds a newer snapshot, newest first")
+
         try:
             groups.save_alignment("demo", {"format": "nope"}, root=root, publish=publish)
             check(False, "bad document rejected")
@@ -110,6 +125,13 @@ def test_api() -> None:
             r = c.put("/api/groups/demo/alignment", json={"format": "x"})
             check(r.status_code == 422, "invalid alignment -> 422")
             check(c.get("/api/groups/nope").status_code == 404, "unknown group -> 404")
+
+            r = c.get("/api/groups/demo/alignment/history")
+            check(r.status_code == 200 and len(r.json()) == 1, "GET alignment history lists the one snapshot from the PUT above")
+            ts = r.json()[0]["timestamp"]
+            r = c.get(f"/api/groups/demo/alignment/history/{ts}")
+            check(r.status_code == 200 and "scan_B" in r.json()["alignments"], "GET one history entry returns the full document")
+            check(c.get("/api/groups/demo/alignment/history/nope").status_code == 404, "unknown history timestamp -> 404")
 
             # Test POST /api/groups/upload with a zip archive
             import io

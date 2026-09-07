@@ -27,6 +27,7 @@ import math
 import os
 import shutil
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,11 @@ from studio.scan_alignment_metrics import alignment_from_rigid_2d, evaluate, wal
 REPO_ROOT = Path(__file__).resolve().parent.parent
 ALIGNMENT_FILE = "group_alignment.json"
 MERGED_STEM = "merged"
+# 저장할 때마다 "저장 직전" group_alignment.json을 여기 스냅샷해둔다 -- 정합 작업은 드래그/ICP/핀을
+# 여러 번 시행착오하는 성격이라, 잘못 저장했을 때 "그 전엔 뭐였지"를 기억에 의존하면 위험하다.
+# HISTORY_KEEP개를 넘으면 오래된 것부터 지운다(무한정 쌓이지 않게).
+HISTORY_DIRNAME = ".history"
+HISTORY_KEEP = 30
 
 
 def groups_root() -> Path:
@@ -144,6 +150,16 @@ def group_status(name: str, root: Path | None = None, projects_root: Path = PROJ
         has_floor=(group_dir / f"{MERGED_STEM}.{FLOOR_STEM}.png").exists(),
         ready=bool(scans) and all(s.has_slice for s in scans),
     )
+
+
+def delete_group(name: str, root: Path | None = None) -> None:
+    """Remove <groups root>/<name>/ entirely (scans, group_alignment.json, merged.*).
+    Raises FileNotFoundError if the group doesn't exist."""
+    root = root or groups_root()
+    group_dir = root / name
+    if not group_dir.is_dir():
+        raise FileNotFoundError(f"group {name!r} not found under {root}")
+    shutil.rmtree(group_dir)
 
 
 def list_groups(root: Path | None = None) -> list[GroupStatus]:
@@ -319,6 +335,38 @@ def validate_alignment_doc(doc: dict) -> None:
                 raise ValueError(f"alignments[{sid!r}].{k} must be a finite number")
 
 
+def _history_dir(group_dir: Path) -> Path:
+    return group_dir / HISTORY_DIRNAME
+
+
+def list_alignment_history(name: str, root: Path | None = None) -> list[dict]:
+    """Past saves for this group, newest first. Each entry is a snapshot taken right
+    before a save overwrote group_alignment.json -- see save_alignment()."""
+    root = root or groups_root()
+    hist_dir = _history_dir(root / name)
+    if not hist_dir.is_dir():
+        return []
+    out = []
+    for p in sorted(hist_dir.glob("*.json"), reverse=True):
+        try:
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        alignments = doc.get("alignments", {})
+        approved = [s for s, a in alignments.items() if a.get("approved")]
+        out.append({"timestamp": p.stem, "scans": len(alignments), "approved": approved})
+    return out
+
+
+def get_alignment_history_entry(name: str, timestamp: str, root: Path | None = None) -> dict:
+    """The raw group_alignment.json content saved at `timestamp` (from list_alignment_history)."""
+    root = root or groups_root()
+    p = _history_dir(root / name) / f"{timestamp}.json"
+    if not p.is_file():
+        raise FileNotFoundError(f"history entry not found: {name}/{timestamp}")
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
 def save_alignment(name: str, doc: dict, root: Path | None = None, projects_root: Path = PROJECTS_ROOT, publish: Path | None = None) -> dict:
     """Write the alignment file, rebuild merged.slicemap.json/.png, copy the
     merged slicemap to the publish dir (if configured). Returns a summary the
@@ -328,6 +376,16 @@ def save_alignment(name: str, doc: dict, root: Path | None = None, projects_root
     group_dir = root / name
     if not group_dir.is_dir():
         raise FileNotFoundError(f"group {name!r} not found")
+
+    existing = group_dir / ALIGNMENT_FILE
+    if existing.exists():
+        hist_dir = _history_dir(group_dir)
+        hist_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        shutil.copyfile(existing, hist_dir / f"{stamp}.json")
+        for old in sorted(hist_dir.glob("*.json"))[:-HISTORY_KEEP]:
+            old.unlink(missing_ok=True)
+
     doc = dict(doc)
     doc.setdefault("group", name)
     doc.setdefault("up_axis_convention", "top = -z")

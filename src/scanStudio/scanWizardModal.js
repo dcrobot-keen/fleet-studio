@@ -6,6 +6,7 @@
 
 import { createScanProject, processScanProject, getScanProjectStatus } from './scanStudioApi.js';
 import { createProject, createProjectFromSlicemap } from '../projects/projectApi.js';
+import { setPendingAlignGroup } from './pendingAlignGroup.js';
 
 const STEP_LABELS = [
   ['import', '1. 가져오기 (스캔 모델 파싱)'],
@@ -416,9 +417,13 @@ function updateButtonStates() {
 
 async function startPipelineExecution() {
   const errBanner = modalEl.querySelector('#wizard-error-msg');
+  const btnNext = modalEl.querySelector('#wizard-btn-next');
   errBanner.style.display = 'none';
   state.submitting = true;
   updateButtonStates();
+  // 업로드+서버 압축 해제가 끝날 때까지 응답이 없다(특히 대용량 zip은 몇 분씩 걸림) --
+  // 버튼이 그냥 disabled 되기만 하면 "먹통"처럼 보이므로 진행 중임을 글자로 알린다.
+  if (btnNext) btnNext.textContent = '⏳ 업로드·처리 중… (스캔 용량에 따라 몇 분 걸릴 수 있습니다)';
 
   try {
     // 1. Create project
@@ -448,6 +453,7 @@ async function startPipelineExecution() {
   } catch (err) {
     state.submitting = false;
     updateButtonStates();
+    if (btnNext) btnNext.textContent = '🚀 파이프라인 처리 시작';
     errBanner.textContent = `파이프라인 시작 실패: ${err.message}`;
     errBanner.style.display = 'block';
   }
@@ -575,6 +581,9 @@ function handleGroupRegistrationSuccess(res) {
   if (btnCreate) {
     btnCreate.textContent = '정합에서 다중 스캔 확인·합성';
     btnCreate.onclick = () => {
+      // 정합 탭에는 그룹이 여러 개면 아무것도 자동으로 안 열린다(고르라는 안내만 뜸) --
+      // 방금 등록한 이 그룹을 main.js가 열어주도록 이름을 넘겨둔다.
+      setPendingAlignGroup(res.group || state.name);
       closeScanWizardModal();
       const studioBtn = /** @type {HTMLElement|null} */ (document.querySelector('#subnav-maps button[data-sub="align"]'));
       if (studioBtn) studioBtn.click();

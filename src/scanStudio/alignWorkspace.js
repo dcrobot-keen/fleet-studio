@@ -28,14 +28,22 @@ import Fill from 'ol/style/Fill.js';
 import Stroke from 'ol/style/Stroke.js';
 import Text from 'ol/style/Text.js';
 import {
-  listGroups, prepareGroup, getGroupWorkspace, postGroupMetrics, postGroupIcp, putGroupAlignment,
+  listGroups, prepareGroup, deleteGroup, getGroupWorkspace, postGroupMetrics, postGroupIcp, putGroupAlignment,
+  getGroupAlignmentHistory, getGroupAlignmentHistoryEntry,
   groupFileUrl, getGroupMergedSlicemap, getGroupMergedFloorMeta,
 } from './scanStudioApi.js';
 import { listProjects, createProjectFromSlicemap, updateProjectFromSlicemap } from '../projects/projectApi.js';
 
 /** @typedef {import('./scanEngine.gen').components['schemas']} Schemas */
 
-const COLORS = { ref: [79, 209, 197], sel: [245, 166, 35], other: [139, 150, 168] };
+// 기준 스캔은 항상 이 색 하나로 고정. 나머지 스캔은 선택 여부와 무관하게 스캔마다 고유한
+// 색을 계속 유지한다(옛날엔 "선택됨"/"그 외" 두 그룹으로만 색을 나눠서, 스캔이 3개 이상이면
+// "그 외"끼리 색이 겹쳐 지금 뭘 보고 있는지 구분이 안 됐다 -- 정합 작업 자체가 안 되는 수준).
+const REF_COLOR = [79, 209, 197];
+const OTHER_PALETTE = [
+  [235, 111, 146], [124, 179, 235], [212, 163, 74], [142, 209, 125],
+  [178, 140, 235], [235, 158, 90], [111, 201, 209], [201, 111, 201],
+];
 const alignProjection = new Projection({ code: 'scan-align-plane', units: 'm', extent: [-500, -500, 500, 500] });
 
 function el(tag, className, text) {
@@ -66,6 +74,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
         <div class="align-ws__row">
           <select id="aw-group" class="pathfinding-select" title="scan-to-map-studio 그룹 (STUDIO_GROUPS_DIR)"></select>
           <button id="aw-load" class="robot-button robot-button-primary">열기</button>
+          <button id="aw-delete-group" class="robot-button" title="선택된 그룹을 통째로 삭제합니다.">🗑 삭제</button>
         </div>
         <div id="aw-group-note" class="align-ws__note">스튜디오에서 그룹 목록을 읽는 중…</div>
       </section>
@@ -120,6 +129,11 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
         <button id="aw-save" class="robot-button robot-button-primary" disabled>서버에 저장 → 합성 슬라이스맵 반영</button>
         <label class="align-ws__check" title="같은 이름의 현장 프로젝트가 있으면 저장 직후 새 합성 지도로 갱신한다 (id·노드링크 유지)"><input type="checkbox" id="aw-auto-project" checked> 저장 시 현장 프로젝트 자동 갱신</label>
         <div id="aw-save-result" class="align-ws__note"></div>
+        <div class="align-ws__row">
+          <select id="aw-history" class="pathfinding-select" title="이 그룹의 저장 기록 -- 저장할 때마다 그 직전 상태가 남는다"></select>
+          <button id="aw-history-load" class="robot-button" disabled title="고른 시점의 정합 값을 화면에 불러온다(그 자체로는 저장 안 됨 -- 확인 후 아래 저장 버튼을 눌러야 반영된다)">이 시점 불러오기</button>
+        </div>
+        <div id="aw-history-note" class="align-ws__note"></div>
         <img id="aw-merged" class="align-ws__merged" alt="" hidden>
         <button id="aw-project" class="robot-button" hidden>이 합성 지도로 현장 프로젝트 만들기 / 갱신</button>
         <div id="aw-project-note" class="align-ws__note"></div>
@@ -192,13 +206,13 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
     refreshPins();
   }
 
-  function layerImage(L, role) {
-    if (L.imgs[role]) return L.imgs[role];
+  function layerImage(L) {
+    if (L.img) return L.img;
     const cv = document.createElement('canvas');
     cv.width = L.cols; cv.height = L.rows;
     const ctx = cv.getContext('2d');
     const img = ctx.createImageData(L.cols, L.rows);
-    const [R, G, B] = COLORS[role];
+    const [R, G, B] = L.color;
     for (let r = 0; r < L.rows; r++) {
       for (let c = 0; c < L.cols; c++) {
         const v = L.codes[r * L.cols + c];
@@ -209,7 +223,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       }
     }
     ctx.putImageData(img, 0, 0);
-    L.imgs[role] = cv;
+    L.img = cv;
     return cv;
   }
 
@@ -245,7 +259,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
         ctx.setTransform(M);
         ctx.imageSmoothingEnabled = false;
         ctx.globalAlpha = emphasis ? 1 : 0.7;
-        ctx.drawImage(layerImage(L, role), 0, 0, L.cols, L.rows);
+        ctx.drawImage(layerImage(L), 0, 0, L.cols, L.rows);
         return cv;
       },
     });
@@ -253,8 +267,28 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
 
   function refreshLayer(L) { L.source.changed(); }
   function refreshAll() { for (const L of layers) refreshLayer(L); }
+  // 기준 스캔은 항상 맨 아래, 지금 고른 스캔은 항상 맨 위(편집 대상이 안 가려지게). 그 사이
+  // "그 외" 스캔들의 순서는 layers 배열 순서를 그대로 쌓기 순서로 쓴다 -- moveLayer()가
+  // 배열 순서를 바꿔주므로, 사용자가 원하는 스캔을 원하는 스캔 위/아래로 직접 옮길 수 있다.
   function restack() {
-    for (const L of layers) L.olLayer.setZIndex(L.isRef ? 1 : L === selected ? 10 : 5);
+    let z = 5;
+    for (const L of layers) {
+      if (L.isRef) L.olLayer.setZIndex(1);
+      else if (L === selected) L.olLayer.setZIndex(100);
+      else L.olLayer.setZIndex(z++);
+    }
+  }
+
+  /** 기준이 아닌 스캔을 layers 배열(=쌓기 순서)에서 한 칸 앞(-1)/뒤(+1)로 옮긴다. */
+  function moveLayer(L, dir) {
+    const others = layers.filter((x) => !x.isRef);
+    const oi = others.indexOf(L);
+    const ni = oi + dir;
+    if (oi === -1 || ni < 0 || ni >= others.length) return;
+    [others[oi], others[ni]] = [others[ni], others[oi]];
+    layers = [...layers.filter((x) => x.isRef), ...others];
+    restack();
+    renderLayerList();
   }
 
   function fitAll() {
@@ -507,19 +541,34 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
     const list = $('aw-layers');
     list.replaceChildren();
     $('aw-count').textContent = layers.length ? String(layers.length) : '';
+    const others = layers.filter((x) => !x.isRef);
     for (const L of layers) {
       const row = el('div', `align-ws__layer${L === selected ? ' selected' : ''}${L.isRef ? ' ref' : ''}`);
       const sw = el('span', 'align-ws__sw');
-      sw.style.background = `rgb(${COLORS[roleOf(L)].join(',')})`;
+      sw.style.background = `rgb(${L.color.join(',')})`;
       const main = el('div', 'align-ws__layer-main');
       main.appendChild(el('div', 'align-ws__layer-name', L.id));
       const meta = L.isRef ? '기준 (고정)' : `${L.method}${L.approved ? ' · 승인' : ''}${L.dirty ? ' · 수정됨' : ''}`;
       main.appendChild(el('div', 'align-ws__layer-meta', meta));
+
+      const controls = el('div', 'align-ws__layer-controls');
+      if (!L.isRef) {
+        const oi = others.indexOf(L);
+        const upBtn = el('button', 'align-ws__layer-order', '▲');
+        upBtn.type = 'button'; upBtn.title = '한 칸 위로(다른 스캔 앞에 그려짐)'; upBtn.disabled = oi <= 0;
+        upBtn.addEventListener('click', (e) => { e.stopPropagation(); moveLayer(L, -1); });
+        const downBtn = el('button', 'align-ws__layer-order', '▼');
+        downBtn.type = 'button'; downBtn.title = '한 칸 아래로(다른 스캔 뒤로 숨음)'; downBtn.disabled = oi >= others.length - 1;
+        downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveLayer(L, 1); });
+        controls.append(upBtn, downBtn);
+      }
       const vis = document.createElement('input');
       vis.type = 'checkbox'; vis.checked = L.visible; vis.title = '표시';
       vis.addEventListener('click', (e) => e.stopPropagation());
       vis.addEventListener('change', () => { L.visible = vis.checked; refreshLayer(L); scheduleMetrics(); });
-      row.append(sw, main, vis);
+      controls.append(vis);
+
+      row.append(sw, main, controls);
       row.addEventListener('click', () => select(L));
       list.appendChild(row);
     }
@@ -603,6 +652,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       img.hidden = false;
       $('aw-project').hidden = false;
       onToast(`'${groupName}' 정합 저장 · 합성 슬라이스맵 갱신${res.published ? ' · 시뮬레이터 월드 반영' : ''}`);
+      refreshHistory(); // 방금 저장 직전 상태가 기록에 새로 추가됨
       if ($('aw-auto-project').checked) await applyMergedToProject({ onlyIfExists: true });
     } catch (err) {
       $('aw-save-result').textContent = `저장 실패: ${err.message}`;
@@ -650,6 +700,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
   // ---- loading ------------------------------------------------------------
   function buildLayers(payload) {
     for (const L of layers) map.removeLayer(L.olLayer);
+    let otherIdx = 0;
     layers = payload.layers.map((raw) => {
       const codes = b64(raw.data);
       const walls = [];
@@ -661,12 +712,14 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       }
       const a = raw.alignment;
       const al = { ox: a.offsetX, oz: a.offsetZ, yaw: a.yawRadians };
+      const isRef = raw.id === payload.reference;
       const L = {
         id: raw.id, cols: raw.cols, rows: raw.rows, res: raw.resolution, origin: raw.origin, codes,
         walls: new Float64Array(walls), visible: true,
         align: { ...al }, loaded: { ...al }, method: a.method, loadedMethod: a.method,
-        approved: Boolean(a.approved), dirty: false, imgs: {},
-        isRef: raw.id === payload.reference,
+        approved: Boolean(a.approved), dirty: false, img: null,
+        color: isRef ? REF_COLOR : OTHER_PALETTE[otherIdx++ % OTHER_PALETTE.length],
+        isRef,
         metrics: raw.metrics ?? null,
         floor: raw.floor ?? null, floorImg: null,
       };
@@ -709,6 +762,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       buildLayers(ws);
       note.textContent = `${ws.layers.length}개 스캔 · 기준 ${ws.reference}${status?.has_merged ? ' · 합성본 있음' : ''}`;
       if (status?.has_merged) { $('aw-merged').src = `${groupFileUrl(name, 'merged.png')}?t=${Date.now()}`; $('aw-merged').hidden = false; $('aw-project').hidden = false; }
+      refreshHistory();
     } catch (err) {
       note.textContent = `열기 실패: ${err.message}`;
     }
@@ -736,6 +790,103 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
     }
   }
   $('aw-load').addEventListener('click', () => { if ($('aw-group').value) loadGroup($('aw-group').value); });
+  $('aw-delete-group').addEventListener('click', async () => {
+    const name = $('aw-group').value;
+    if (!name) return;
+    if (!confirm(`'${name}' 그룹을 삭제할까요?\n스캔 데이터와 정합 결과가 모두 사라지며 되돌릴 수 없습니다.`)) return;
+    const note = $('aw-group-note');
+    try {
+      await deleteGroup(name);
+      if (groupName === name) {
+        buildLayers({ layers: [], reference: null }); // 지금 열려있던 그룹이면 캔버스도 비운다
+        groupName = null;
+        refreshHistory();
+      }
+      await refreshGroups();
+      onToast(`'${name}' 그룹을 삭제했습니다.`);
+    } catch (err) {
+      note.textContent = `삭제 실패: ${err.message}`;
+    }
+  });
+
+  // ---- 저장 기록: 저장할 때마다 그 직전 상태가 .history/ 에 남는다(studio/groups.py
+  // save_alignment) -- 드래그/ICP/핀을 시행착오하다 잘못 저장해도 몇 걸음 전으로 돌아갈 수
+  // 있게. "불러오기"는 화면에만 반영하고 자동 저장은 하지 않는다 -- 확인하고 나서 직접
+  // 저장 버튼을 눌러야 실제로 반영되고, 그 저장 자체도 새 기록 한 칸을 남긴다.
+  function formatHistoryTimestamp(ts) {
+    // "YYYYMMDDTHHMMSSffffffZ" (UTC, studio/groups.py의 strftime 포맷)
+    const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})\d{6}Z$/.exec(ts);
+    if (!m) return ts;
+    const [, y, mo, d, h, mi, s] = m;
+    const date = new Date(`${y}-${mo}-${d}T${h}:${mi}:${s}Z`);
+    if (Number.isNaN(date.getTime())) return ts;
+    return date.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  async function refreshHistory() {
+    const sel = $('aw-history');
+    const btn = $('aw-history-load');
+    const note = $('aw-history-note');
+    sel.replaceChildren();
+    if (!groupName) { btn.disabled = true; note.textContent = ''; return; }
+    try {
+      const hist = await getGroupAlignmentHistory(groupName);
+      if (!hist.length) {
+        const opt = document.createElement('option');
+        opt.textContent = '저장 기록 없음';
+        sel.appendChild(opt);
+        btn.disabled = true;
+        note.textContent = '아직 저장한 적이 없습니다 -- 저장할 때마다 그 직전 상태가 여기 남습니다.';
+        return;
+      }
+      for (const h of hist) {
+        const opt = document.createElement('option');
+        opt.value = h.timestamp;
+        opt.textContent = `${formatHistoryTimestamp(h.timestamp)} · 승인 ${h.approved.length}/${h.scans}`;
+        sel.appendChild(opt);
+      }
+      btn.disabled = false;
+      note.textContent = `저장 ${hist.length}번 기록됨 (최신순)`;
+    } catch (err) {
+      const opt = document.createElement('option');
+      opt.textContent = '기록 조회 실패';
+      sel.appendChild(opt);
+      btn.disabled = true;
+      note.textContent = `기록 조회 실패: ${err.message}`;
+    }
+  }
+
+  /** 과거 저장 기록(doc)의 정합 값을 지금 열려있는 레이어들에 그대로 얹는다 -- 저장은 안 함. */
+  function applyAlignmentDoc(doc) {
+    for (const L of layers) {
+      if (L.isRef) continue;
+      const a = doc.alignments?.[L.id];
+      if (!a) continue;
+      L.align = { ox: a.offsetX, oz: a.offsetZ, yaw: a.yawRadians };
+      L.method = a.method ?? 'app';
+      L.approved = Boolean(a.approved);
+      L.dirty = true;
+      L.metrics = null;
+    }
+    refreshAll();
+    renderLayerList();
+    updatePanel();
+    renderMetrics();
+    $('aw-save').disabled = layers.length === 0; // 불러온 값도 결국 markDirty와 같은 "저장 전" 상태
+  }
+
+  $('aw-history-load').addEventListener('click', async () => {
+    const ts = $('aw-history').value;
+    const note = $('aw-history-note');
+    if (!ts || !groupName) return;
+    try {
+      const doc = await getGroupAlignmentHistoryEntry(groupName, ts);
+      applyAlignmentDoc(doc);
+      note.textContent = `${formatHistoryTimestamp(ts)} 시점을 화면에 불러왔습니다 -- 확인 후 저장을 눌러야 반영됩니다.`;
+    } catch (err) {
+      note.textContent = `불러오기 실패: ${err.message}`;
+    }
+  });
 
   // devtools 진단용 (rootEl.__alignWorkspace)
   Object.defineProperty(rootEl, '__alignWorkspace', { value: { get layers() { return layers; }, get selected() { return selected; }, get pins() { return pins; }, nearestWall, map }, configurable: true });

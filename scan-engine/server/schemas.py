@@ -175,6 +175,14 @@ class MergedCells(BaseModel):
     rows: int
 
 
+class AlignmentHistoryEntry(BaseModel):
+    """One past save, newest first (GET /api/groups/{name}/alignment/history) -- a snapshot
+    taken right before that save overwrote group_alignment.json, so it's always restorable."""
+    timestamp: str
+    scans: int
+    approved: list[str]
+
+
 class SaveAlignmentResult(BaseModel):
     """PUT /api/groups/{name}/alignment -> merged slicemap rebuilt (+ published)."""
     group: str

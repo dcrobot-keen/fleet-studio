@@ -106,6 +106,11 @@ export function getScanProjectStatus(name) {
   return call((c) => c.GET('/api/projects/{name}/status', { params: { path: { name } } }));
 }
 
+/** 단일 스캔 프로젝트를 완전히 지운다(진행 중인 처리 작업이 있으면 엔진이 409로 거절). */
+export function deleteScanProject(name) {
+  return call((c) => c.DELETE('/api/projects/{name}', { params: { path: { name } } }));
+}
+
 // ---- 다중 스캔 그룹 (정합 워크스페이스 네이티브 통합, architecture-improvements ⑱) ----
 export function uploadGroupZip(file, name = '') {
   return call((c) => c.POST('/api/groups/upload', {
@@ -120,6 +125,11 @@ export function listGroups() {
 
 export function prepareGroup(name) {
   return call((c) => c.POST('/api/groups/{name}/prepare', { params: { path: { name } } }));
+}
+
+/** 그룹 폴더(스캔 전체 + group_alignment.json + 합성본)를 통째로 지운다. */
+export function deleteGroup(name) {
+  return call((c) => c.DELETE('/api/groups/{name}', { params: { path: { name } } }));
 }
 
 /** 스캔별 슬라이스(b64 코드 격자)·정합·지표·바닥 이미지·게이트 -- 워크스페이스 페이로드 */
@@ -152,6 +162,16 @@ export function postGroupIcp(name, body) {
  */
 export function putGroupAlignment(name, doc) {
   return call((c) => c.PUT('/api/groups/{name}/alignment', { params: { path: { name } }, body: doc }));
+}
+
+/** 이 그룹의 저장 기록(최신순) -- 저장할 때마다 그 직전 상태가 하나씩 쌓인다. */
+export function getGroupAlignmentHistory(name) {
+  return call((c) => c.GET('/api/groups/{name}/alignment/history', { params: { path: { name } } }));
+}
+
+/** 저장 기록 한 건의 전체 group_alignment.json 내용(getGroupAlignmentHistory의 timestamp로 조회). */
+export function getGroupAlignmentHistoryEntry(name, timestamp) {
+  return call((c) => c.GET('/api/groups/{name}/alignment/history/{timestamp}', { params: { path: { name, timestamp } } }));
 }
 
 export function getGroupMergedSlicemap(name) {

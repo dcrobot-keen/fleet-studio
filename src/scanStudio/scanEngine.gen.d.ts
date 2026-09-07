@@ -30,7 +30,8 @@ export interface paths {
         get: operations["api_group_api_groups__name__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Api Delete Group */
+        delete: operations["api_delete_group_api_groups__name__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -152,6 +153,40 @@ export interface paths {
         get: operations["api_get_alignment_api_groups__name__alignment_get"];
         /** Api Put Alignment */
         put: operations["api_put_alignment_api_groups__name__alignment_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{name}/alignment/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Alignment History */
+        get: operations["api_alignment_history_api_groups__name__alignment_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{name}/alignment/history/{timestamp}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Api Alignment History Entry */
+        get: operations["api_alignment_history_entry_api_groups__name__alignment_history__timestamp__get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -296,6 +331,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Api Delete Project */
+        delete: operations["api_delete_project_api_projects__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{name}/align/geojson": {
         parameters: {
             query?: never;
@@ -363,6 +415,19 @@ export interface components {
             approved?: boolean | null;
             /** Approved At */
             approved_at?: string | null;
+        };
+        /**
+         * AlignmentHistoryEntry
+         * @description One past save, newest first (GET /api/groups/{name}/alignment/history) -- a snapshot
+         *     taken right before that save overwrote group_alignment.json, so it's always restorable.
+         */
+        AlignmentHistoryEntry: {
+            /** Timestamp */
+            timestamp: string;
+            /** Scans */
+            scans: number;
+            /** Approved */
+            approved: string[];
         };
         /**
          * AlignmentMetrics
@@ -900,6 +965,35 @@ export interface operations {
             };
         };
     };
+    api_delete_group_api_groups__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_prepare_api_groups__name__prepare_post: {
         parameters: {
             query?: never;
@@ -1145,6 +1239,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SaveAlignmentResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_alignment_history_api_groups__name__alignment_history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlignmentHistoryEntry"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_alignment_history_entry_api_groups__name__alignment_history__timestamp__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                timestamp: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupAlignmentDoc"];
                 };
             };
             /** @description Validation Error */
@@ -1413,6 +1570,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProjectStatus"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    api_delete_project_api_projects__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

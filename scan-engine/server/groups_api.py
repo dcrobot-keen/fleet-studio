@@ -7,8 +7,12 @@ slicemap), and run the ICP finisher. Mounted by server/app.py.
     GET  /api/groups                      group statuses
     GET  /api/groups/{name}               one group's status
     POST /api/groups/{name}/prepare       build projects/slices for every scan
+    DELETE /api/groups/{name}             remove the group directory entirely
     GET  /api/groups/{name}/alignment     current group_alignment.json
-    PUT  /api/groups/{name}/alignment     save -> merged.slicemap.json/.png (+ publish)
+    PUT  /api/groups/{name}/alignment     save -> merged.slicemap.json/.png (+ publish);
+                                           snapshots the previous file into .history/ first
+    GET  /api/groups/{name}/alignment/history            past saves, newest first
+    GET  /api/groups/{name}/alignment/history/{ts}       one past save's full content
     POST /api/groups/{name}/icp           {scan, alignment, others?} -> refined pose + metrics
     GET  /api/groups/{name}/merged.png    latest merged preview
 """
@@ -49,6 +53,14 @@ def api_group(name: str) -> dict:
 def api_prepare(name: str) -> dict:
     try:
         return groups.prepare(name).to_json()
+    except FileNotFoundError as exc:
+        raise _404(exc)
+
+
+@router.delete("/api/groups/{name}", status_code=204)
+def api_delete_group(name: str) -> None:
+    try:
+        groups.delete_group(name)
     except FileNotFoundError as exc:
         raise _404(exc)
 
@@ -147,6 +159,19 @@ def api_get_alignment(name: str) -> dict:
     import json
 
     return json.loads(f.read_text(encoding="utf-8"))
+
+
+@router.get("/api/groups/{name}/alignment/history", response_model=list[schemas.AlignmentHistoryEntry])
+def api_alignment_history(name: str) -> list[dict]:
+    return groups.list_alignment_history(name)
+
+
+@router.get("/api/groups/{name}/alignment/history/{timestamp}", response_model=schemas.GroupAlignmentDoc)
+def api_alignment_history_entry(name: str, timestamp: str) -> dict:
+    try:
+        return groups.get_alignment_history_entry(name, timestamp)
+    except FileNotFoundError as exc:
+        raise _404(exc)
 
 
 @router.put("/api/groups/{name}/alignment", response_model=schemas.SaveAlignmentResult)

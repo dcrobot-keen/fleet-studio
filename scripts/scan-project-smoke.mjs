@@ -94,6 +94,18 @@ const doc = { format: 'slicemap-v1', z: 0.18, band: 0.05, resolution: r, origin:
   r = await api('POST', '/api/projects/from-slicemap', { slicemap: doc });
   check('from-slicemap requires name', r.status === 400);
 
+  // 삭제
+  r = await api('DELETE', '/api/projects/default');
+  check('DELETE rejects the default project', r.status === 400);
+  r = await api('DELETE', '/api/projects/nope');
+  check('DELETE 404 for unknown project', r.status === 404);
+  r = await api('DELETE', `/api/projects/${projectId}`);
+  check('DELETE removes the project', r.status === 204);
+  r = await api('GET', `/api/projects/${projectId}`);
+  check('deleted project is gone', r.status === 404);
+  r = await api('GET', '/api/projects');
+  check('project list no longer includes it', !r.body.some((p) => p.id === projectId));
+
   // 자동 등록
   const first = await robotsRouter.robots.ensureVda5050Robot('dcrobot', 'tb3-sim-09');
   check('ensureVda5050Robot creates a sim robot with TB3 size and agv icon', first.created && first.robot.vda5050Serial === 'tb3-sim-09' && first.robot.sizeMeters === 0.2 && first.robot.type === 'agv_amr' && first.robot.icon.startsWith('data:'));

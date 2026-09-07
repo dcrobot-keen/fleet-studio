@@ -6,6 +6,7 @@ nothing enumerated `projects/` before this.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from studio.status import read_status
@@ -22,6 +23,15 @@ def create_project(name: str) -> Path:
         raise FileExistsError(f"project already exists: {proj_dir}")
     (proj_dir / "map").mkdir(parents=True)
     return proj_dir
+
+
+def delete_project(name: str) -> None:
+    """Remove projects/<name>/ entirely. Raises FileNotFoundError if it doesn't exist --
+    the API layer checks is_running() first so this never races a job writing into it."""
+    proj_dir = PROJECTS_ROOT / name
+    if not proj_dir.exists():
+        raise FileNotFoundError(f"project not found: {proj_dir}")
+    shutil.rmtree(proj_dir)
 
 
 def list_projects() -> list[dict]:

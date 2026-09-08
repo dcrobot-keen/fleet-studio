@@ -44,5 +44,10 @@ export async function createSettingsRouter(dataDir) {
       res.status(err.status ?? 400).json({ error: err.message });
     }
   });
-  return router;
+  return {
+    router,
+    // 다른 라우터(vps.mjs)가 매 요청마다 최신 설정값을 읽게 -- lowdb 인스턴스를 새로 안 만들고
+    // 이 db.data를 그대로 공유한다(PUT 핸들러가 쓰는 값과 항상 같은 객체).
+    getServiceUrl: (key) => db.data.services?.[key] ?? DEFAULT_SERVICES[key],
+  };
 }

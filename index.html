@@ -59,6 +59,10 @@
               <span class="subnav-tab-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="1.5"/><rect x="9" y="9" width="12" height="12" rx="1.5"/></svg></span>
               <span>정합</span>
             </button>
+            <button class="subnav-tab" data-sub="texture">
+              <span class="subnav-tab-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18 13 13 0 0 1 0-18z"/></svg></span>
+              <span>3D 텍스처</span>
+            </button>
           </div>
           <div class="subnav-actions">
             <button id="btn-import" class="subnav-action-btn wizard-launch-btn" title="iPhone 스캔(.zip/.usdz) · 슬라이스맵(.slicemap.json + 바닥 이미지) · 포인트클라우드(.pcd) -- 종류는 자동 판별. 지도 위에 파일을 놓아도 됩니다">
@@ -172,6 +176,7 @@
 
     <!-- 지도 › 다중 스캔 정합: 스튜디오 워크스페이스의 네이티브(OpenLayers) 구현 (src/scanStudio/alignWorkspace.js) -->
     <div id="view-align" class="view" data-view="align"></div>
+    <div id="view-texture" class="view" data-view="texture"></div>
 
     <div id="view-studio" class="view" data-view="studio">
       <div class="studio-embed-container">

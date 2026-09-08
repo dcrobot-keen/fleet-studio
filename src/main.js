@@ -30,7 +30,9 @@ import { subscribeFleetStream, getFleetConfig } from './fleet/fleetApi.js';
 import { openScanWizardModal, initScanWizardModal } from './scanStudio/scanWizardModal.js';
 import { consumePendingAlignGroup } from './scanStudio/pendingAlignGroup.js';
 import { createAlignWorkspace } from './scanStudio/alignWorkspace.js';
+import { createDigitalTwinPanel } from './digitalTwin/digitalTwinPanel.js';
 import { createImportDialog, attachDropTarget } from './imports/importDialog.js';
+import { getServiceUrl } from './servicesConfig.js';
 import { importSlicemapFiles } from './imports/importSlicemap.js';
 import { importRobotMapFiles } from './imports/importRobotMap.js';
 import { importFloorImageFile } from './imports/importFloorImage.js';
@@ -192,6 +194,7 @@ let simulationTab = null;
 let robotsTab = null;
 let settingsTab = null;
 let alignWorkspace = null;
+let digitalTwinPanel = null;
 let mapsSub = '2d';
 
 // 탭 = 정보 구조(플릿 스튜디오 기획서 §5): 지도(2D/3D) · 로봇 · 운영 · 시뮬레이션 · 설정.
@@ -217,17 +220,15 @@ function activateMapsSub(sub) {
     });
     return;
   }
+  if (sub === 'texture') {
+    if (!digitalTwinPanel) digitalTwinPanel = createDigitalTwinPanel(document.getElementById('view-texture'));
+    else digitalTwinPanel.refresh();
+    return;
+  }
   if (sub === 'studio') {
     const frame = document.getElementById('studio-frame');
     const link = document.getElementById('link-studio-external');
-    let studioUrl = 'http://localhost:8000/groups';
-    try {
-      const saved = localStorage.getItem('pathfinder_services_endpoints');
-      if (saved) {
-        const { studio } = JSON.parse(saved);
-        if (studio) studioUrl = studio;
-      }
-    } catch {}
+    const studioUrl = getServiceUrl('studio');
     if (frame && (!frame.src || !frame.src.includes('8000'))) frame.src = studioUrl;
     if (link) link.href = studioUrl;
     return;
@@ -639,6 +640,7 @@ btnViewMesh.addEventListener('click', () => {
       { key: 'api', label: 'API', url: '/api/projects' },
       { key: 'planner', label: '플래너', url: '/api/path/health' },
       { key: 'engine', label: 'scan-engine', url: '/scan-engine/api/groups' },
+      { key: 'vps', label: 'VPS', url: '/api/vps/health' }, // vps.mjs가 업스트림이 죽어도 항상 200을 주므로, 아래 probe()가 이미 하는 "fetch가 안 던지면 up" 판정이 그대로 맞다
       { key: 'mqtt', label: 'MQTT' },
     ];
     const items = new Map();

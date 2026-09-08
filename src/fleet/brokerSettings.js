@@ -3,7 +3,9 @@
 // 옮긴 것. 로봇 표는 운영 화면의 fleetBoard.js로 갔다. doc/vda5050-rcs.md.
 import { getFleetConfig, putFleetConfig, subscribeFleetStream } from './fleetApi.js';
 import { createSimControlCard } from '../simulation/simControlCard.js';
+import { createVpsStatusCard } from './vpsStatusCard.js';
 import { activeProjectId, activeProjectName } from '../appShared.js';
+import { DEFAULT_SERVICES } from '../servicesConfig.js';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -89,13 +91,6 @@ export function createBrokerSettings(containerEl) {
   info.appendChild(el('div', 'robot-form-title', '서비스 주소'));
   info.appendChild(el('div', 'robot-form-status', '현장 공통 설정입니다. 이 값은 서버에 저장되고 모든 브라우저가 같은 주소를 씁니다.'));
 
-  const DEFAULT_SERVICES = {
-    simViewer: 'http://localhost:8767',
-    studio: 'http://localhost:8000/groups',
-    scanEngine: 'http://localhost:8000',
-    navBrain: 'http://localhost:5173/apps/dashboard/nav.html',
-    vpsServer: 'http://localhost:8080',
-  };
   let savedServices = { ...DEFAULT_SERVICES };
   try {
     const raw = localStorage.getItem('pathfinder_services_endpoints');
@@ -200,6 +195,11 @@ export function createBrokerSettings(containerEl) {
   const simControl = createSimControlCard(simCard, { projectId: activeProjectId, projectName: activeProjectName });
   layout.appendChild(simCard);
 
+  // VPS 서버 -- 위 서비스 주소의 vpsServer가 가리키는 곳에 등록된 room(위치 보정용 스캔) 목록.
+  const vpsCard = el('div');
+  const vpsControl = createVpsStatusCard(vpsCard);
+  layout.appendChild(vpsCard);
+
   let config = null;
   let brokerStatus = { connected: false, brokerUrl: null, error: null };
 
@@ -279,5 +279,5 @@ export function createBrokerSettings(containerEl) {
   });
   loadConfig();
 
-  return { destroy() { stream.close(); simControl.destroy(); } };
+  return { destroy() { stream.close(); simControl.destroy(); vpsControl.destroy(); } };
 }

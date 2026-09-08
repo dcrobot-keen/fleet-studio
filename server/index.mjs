@@ -13,6 +13,8 @@ import { createRobotsRouter } from './robots.mjs';
 import { createProjectsRouter } from './projects.mjs';
 import { createSettingsRouter } from './settings.mjs';
 import { createSimControlRouter } from './simControl.mjs';
+import { createVpsRouter } from './vps.mjs';
+import { createDigitalTwinRouter } from './digitalTwin.mjs';
 import { createVda5050Bridge } from './vda5050.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -169,8 +171,11 @@ const vda5050 = await createVda5050Bridge({
   },
 });
 app.use('/api', vda5050.router);
-app.use('/api', await createSettingsRouter(DATA_DIR)); // 서비스 주소 (data/settings.json)
+const settingsRouter = await createSettingsRouter(DATA_DIR); // 서비스 주소 (data/settings.json)
+app.use('/api', settingsRouter.router);
 app.use('/api', await createSimControlRouter({ dataDir: DATA_DIR, repoRoot: resolve(__dirname, '..') })); // 시뮬레이터 시작/정지 (설정 › 시뮬레이터)
+app.use('/api', await createVpsRouter({ getServiceUrl: settingsRouter.getServiceUrl })); // VPS 서버 프록시 (설정 › VPS 서버 주소)
+app.use('/api', await createDigitalTwinRouter({ repoRoot: resolve(__dirname, '..') })); // 3D 텍스처 뷰어 (dc-vps-digital-twin 결과)
 
 httpServer.on('upgrade', (req, socket, head) => {
   const wss = { '/api/live-pose/stream': livePoseWss, '/api/drive-request/stream': driveRequestWss, [vda5050.streamPath]: vda5050.wss }[req.url];

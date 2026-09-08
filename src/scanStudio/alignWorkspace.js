@@ -33,6 +33,7 @@ import {
   groupFileUrl, getGroupMergedSlicemap, getGroupMergedFloorMeta,
 } from './scanStudioApi.js';
 import { listProjects, createProjectFromSlicemap, updateProjectFromSlicemap } from '../projects/projectApi.js';
+import { getVpsScanStatus, listVpsRooms, uploadVpsScan } from '../fleet/vpsApi.js';
 
 /** @typedef {import('./scanEngine.gen').components['schemas']} Schemas */
 
@@ -550,6 +551,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       main.appendChild(el('div', 'align-ws__layer-name', L.id));
       const meta = L.isRef ? '기준 (고정)' : `${L.method}${L.approved ? ' · 승인' : ''}${L.dirty ? ' · 수정됨' : ''}`;
       main.appendChild(el('div', 'align-ws__layer-meta', meta));
+      if (L.vpsStatus) main.appendChild(el('div', 'align-ws__layer-meta', L.vpsStatus));
 
       const controls = el('div', 'align-ws__layer-controls');
       if (!L.isRef) {
@@ -562,6 +564,12 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
         downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveLayer(L, 1); });
         controls.append(upBtn, downBtn);
       }
+      const vpsBtn = el('button', 'align-ws__layer-vps', '📡');
+      vpsBtn.type = 'button';
+      vpsBtn.title = '이 스캔의 원본 zip을 VPS 서버에 등록합니다 (room_id = 스캔 id)';
+      vpsBtn.disabled = Boolean(L.vpsBusy);
+      vpsBtn.addEventListener('click', (e) => { e.stopPropagation(); openVpsUploadDialog(L); });
+      controls.append(vpsBtn);
       const vis = document.createElement('input');
       vis.type = 'checkbox'; vis.checked = L.visible; vis.title = '표시';
       vis.addEventListener('click', (e) => e.stopPropagation());
@@ -573,6 +581,65 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       list.appendChild(row);
     }
   }
+
+  // ---- VPS 등록 ("이 스캔을 위치 보정용으로 쓸 수 있게") ---------------------------------
+  // room_id는 업로드 시 준 이름 그대로라, scan-engine 쪽 정합의 스캔 id(L.id)와 반드시 같아야
+  // frames.py의 GroupFrames가 이 스캔을 그룹 정합 좌표로 바르게 옮긴다 -- 그래서 이 액션은
+  // (스캔 id가 이미 확정된) 여기 정합 워크스페이스에 두고, 위저드에는 안 둔다.
+  function openVpsUploadDialog(L) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file) startVpsUpload(L, file);
+    });
+    input.click();
+  }
+
+  async function startVpsUpload(L, file) {
+    try {
+      const status = await getVpsScanStatus(L.id).catch(() => null);
+      if (status && ['unzipping', 'building', 'registering'].includes(status.status)) {
+        alert(`'${L.id}'는 이미 VPS 등록이 진행 중입니다 (${status.status}). 잠시 후 다시 시도하세요.`);
+        return;
+      }
+      let replace = false;
+      try {
+        replace = (await listVpsRooms()).rooms.some((r) => r.room_id === L.id);
+      } catch { /* 목록 조회 실패는 무시하고 새 등록으로 진행 */ }
+      if (!confirm(`'${L.id}' 스캔을 VPS 서버에 ${replace ? '다시 ' : ''}등록할까요?${replace ? '\n(기존 room을 덮어씁니다)' : ''}`)) return;
+
+      L.vpsBusy = true;
+      L.vpsStatus = 'VPS: 업로드 중…';
+      renderLayerList();
+      await uploadVpsScan(L.id, file, { replace });
+      L.vpsStatus = 'VPS: 빌드 중…';
+      renderLayerList();
+      pollVpsStatus(L);
+    } catch (err) {
+      L.vpsBusy = false;
+      L.vpsStatus = `VPS: 등록 실패 — ${err.message}`;
+      renderLayerList();
+    }
+  }
+
+  function pollVpsStatus(L) {
+    const timer = setInterval(async () => {
+      try {
+        const s = await getVpsScanStatus(L.id);
+        if (s.status === 'done' || s.status === 'failed') {
+          clearInterval(timer);
+          L.vpsBusy = false;
+          L.vpsStatus = s.status === 'done' ? `VPS: 완료 (room ${s.room_id})` : `VPS: 실패 — ${s.error ?? '알 수 없는 오류'}`;
+        } else {
+          L.vpsStatus = `VPS: ${s.status}…`;
+        }
+        renderLayerList();
+      } catch { /* 폴링 한 번 실패는 무시, 다음 tick 재시도 */ }
+    }, 2000);
+  }
+
   function select(L) {
     selected = L;
     if (pinMode) setPinMode(false);

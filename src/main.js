@@ -211,7 +211,12 @@ function activateMapsSub(sub) {
     return;
   }
   if (sub === 'align') {
-    if (!alignWorkspace) alignWorkspace = createAlignWorkspace(document.getElementById('view-align'), { onToast: showFleetToast });
+    if (!alignWorkspace) {
+      alignWorkspace = createAlignWorkspace(document.getElementById('view-align'), {
+        onToast: showFleetToast,
+        onTrainingDone: () => digitalTwinPanel?.refresh(),
+      });
+    }
     // 스캔 위저드가 방금 등록한 그룹을 넘겨줬으면(pendingAlignGroup.js), 그룹이 여러 개라 자동으로
     // 안 열리는 경우에도 곧장 그 그룹을 연다. show()가 먼저 드롭다운을 채워야 하므로 그 뒤에 연다.
     const pendingGroup = consumePendingAlignGroup();

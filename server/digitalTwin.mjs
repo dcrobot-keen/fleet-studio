@@ -20,6 +20,29 @@ import { resolve, join, extname } from 'node:path';
 const DIGITAL_TWIN_DIR = process.env.DIGITAL_TWIN_DIR || '../dc-vps-digital-twin';
 const NAME_RE = /^[A-Za-z0-9_.-]+$/; // 결과 폴더 이름 검증 -- 경로 순회 방지(실제 폴더명은 이미 이 모양)
 
+/** digitalTwinTraining.mjs도 같은 형제 저장소 경로 규칙을 쓰도록 export. */
+export function resolveTwinRoot(repoRoot) {
+  return resolve(repoRoot, DIGITAL_TWIN_DIR);
+}
+
+/**
+ * make_point_cloud_viewer.py 실행(Promise) -- 기존 수동 "뷰어 만들기" 버튼과 digitalTwinTraining.mjs의
+ * 학습 마무리 단계가 이 하나를 공유한다.
+ */
+export function generateViewer({ twinRoot, obj, png, output, title }) {
+  return new Promise((resolvePromise, reject) => {
+    execFile(
+      'python',
+      ['make_point_cloud_viewer.py', obj, png, output, '--title', title],
+      { cwd: twinRoot, timeout: 10 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) reject(Object.assign(new Error(stderr?.trim().slice(-800) || err.message), { stdout, stderr }));
+        else resolvePromise({ stdout });
+      }
+    );
+  });
+}
+
 async function listEntries(dir) {
   return readdir(dir, { withFileTypes: true }).catch(() => []);
 }
@@ -54,7 +77,7 @@ async function dirSizeBytes(dir) {
 }
 
 export async function createDigitalTwinRouter({ repoRoot }) {
-  const twinRoot = resolve(repoRoot, DIGITAL_TWIN_DIR);
+  const twinRoot = resolveTwinRoot(repoRoot);
   const resultsDir = resolve(twinRoot, 'data/results');
   const generating = new Map(); // name -> { status: 'running'|'done'|'error', error? }
   const router = Router();
@@ -109,15 +132,9 @@ export async function createDigitalTwinRouter({ repoRoot }) {
       }
       generating.set(name, { status: 'running' });
       const outputPath = join(dir, 'viewer.html');
-      execFile(
-        'python',
-        ['make_point_cloud_viewer.py', join(dir, source.obj), join(dir, source.png), outputPath, '--title', name],
-        { cwd: twinRoot, timeout: 10 * 60 * 1000, maxBuffer: 8 * 1024 * 1024 },
-        (err, stdout, stderr) => {
-          if (err) generating.set(name, { status: 'error', error: stderr?.trim().slice(-800) || err.message });
-          else generating.set(name, { status: 'done' });
-        }
-      );
+      generateViewer({ twinRoot, obj: join(dir, source.obj), png: join(dir, source.png), output: outputPath, title: name })
+        .then(() => generating.set(name, { status: 'done' }))
+        .catch((err) => generating.set(name, { status: 'error', error: err.message }));
       res.status(202).json({ status: 'running' });
     } catch (err) {
       res.status(err.status ?? 500).json({ error: err.message });

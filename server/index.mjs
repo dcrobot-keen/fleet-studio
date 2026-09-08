@@ -15,6 +15,7 @@ import { createSettingsRouter } from './settings.mjs';
 import { createSimControlRouter } from './simControl.mjs';
 import { createVpsRouter } from './vps.mjs';
 import { createDigitalTwinRouter } from './digitalTwin.mjs';
+import { createDigitalTwinTrainingRouter } from './digitalTwinTraining.mjs';
 import { createVda5050Bridge } from './vda5050.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -176,6 +177,7 @@ app.use('/api', settingsRouter.router);
 app.use('/api', await createSimControlRouter({ dataDir: DATA_DIR, repoRoot: resolve(__dirname, '..') })); // 시뮬레이터 시작/정지 (설정 › 시뮬레이터)
 app.use('/api', await createVpsRouter({ getServiceUrl: settingsRouter.getServiceUrl })); // VPS 서버 프록시 (설정 › VPS 서버 주소)
 app.use('/api', await createDigitalTwinRouter({ repoRoot: resolve(__dirname, '..') })); // 3D 텍스처 뷰어 (dc-vps-digital-twin 결과)
+app.use('/api', await createDigitalTwinTrainingRouter({ repoRoot: resolve(__dirname, '..'), dataDir: DATA_DIR })); // SuGaR 학습 job runner
 
 httpServer.on('upgrade', (req, socket, head) => {
   const wss = { '/api/live-pose/stream': livePoseWss, '/api/drive-request/stream': driveRequestWss, [vda5050.streamPath]: vda5050.wss }[req.url];

@@ -409,6 +409,12 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 }
 .align-ws__layer-vps:hover:not(:disabled) { color: var(--text); filter: brightness(1.15); }
 .align-ws__layer-vps:disabled { opacity: .3; cursor: not-allowed; }
+.align-ws__layer-train {
+  width: 22px; height: 20px; padding: 0; font-size: 11px; line-height: 1; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--panel-3); color: var(--text-dim); cursor: pointer;
+}
+.align-ws__layer-train:hover:not(:disabled) { color: var(--text); filter: brightness(1.15); }
+.align-ws__layer-train:disabled { opacity: .3; cursor: not-allowed; }
 .align-ws__layer-name { font-size: 12.5px; font-weight: 600; color: var(--text); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .align-ws__layer-meta { font-size: 11px; color: var(--text-faint); }
 .align-ws__selname { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); }

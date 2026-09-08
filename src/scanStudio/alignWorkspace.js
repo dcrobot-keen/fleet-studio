@@ -34,6 +34,7 @@ import {
 } from './scanStudioApi.js';
 import { listProjects, createProjectFromSlicemap, updateProjectFromSlicemap } from '../projects/projectApi.js';
 import { getVpsScanStatus, listVpsRooms, uploadVpsScan } from '../fleet/vpsApi.js';
+import { getTrainingStatus, listTrainingJobs, startTraining } from '../digitalTwin/digitalTwinTrainingApi.js';
 
 /** @typedef {import('./scanEngine.gen').components['schemas']} Schemas */
 
@@ -64,9 +65,9 @@ function applyXY(a, x, y) {
 
 /**
  * @param {HTMLElement} rootEl
- * @param {{ onToast?: (message: string) => void }} [opts]
+ * @param {{ onToast?: (message: string) => void, onTrainingDone?: (name: string) => void }} [opts]
  */
-export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}) {
+export function createAlignWorkspace(rootEl, { onToast = (_message) => {}, onTrainingDone = (_name) => {} } = {}) {
   rootEl.classList.add('align-ws');
   rootEl.innerHTML = `
     <aside class="align-ws__rail">
@@ -82,6 +83,21 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       <section class="align-ws__section">
         <div class="align-ws__title">스캔 <span id="aw-count" class="align-ws__count"></span></div>
         <div id="aw-layers" class="align-ws__layers"></div>
+      </section>
+      <section class="align-ws__section">
+        <div class="align-ws__title">3D 텍스처 학습 옵션</div>
+        <div class="align-ws__row">
+          <select id="aw-train-poly" class="pathfinding-select" title="메시 해상도">
+            <option value="low">저해상도 (빠름)</option>
+            <option value="high">고해상도 (느림)</option>
+          </select>
+          <select id="aw-train-refine" class="pathfinding-select" title="정제 반복 횟수">
+            <option value="short">짧게</option>
+            <option value="medium">보통</option>
+            <option value="long">길게</option>
+          </select>
+        </div>
+        <div class="align-ws__note">스캔 목록의 🧬 버튼으로 이 설정으로 SuGaR 학습을 시작합니다 (GPU, 1~2시간+).</div>
       </section>
       <section class="align-ws__section" id="aw-floor-row" hidden>
         <label class="align-ws__check"><input type="checkbox" id="aw-floor" checked> 앱 바닥 이미지</label>
@@ -552,6 +568,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       const meta = L.isRef ? '기준 (고정)' : `${L.method}${L.approved ? ' · 승인' : ''}${L.dirty ? ' · 수정됨' : ''}`;
       main.appendChild(el('div', 'align-ws__layer-meta', meta));
       if (L.vpsStatus) main.appendChild(el('div', 'align-ws__layer-meta', L.vpsStatus));
+      if (L.trainStatus) main.appendChild(el('div', 'align-ws__layer-meta', L.trainStatus));
 
       const controls = el('div', 'align-ws__layer-controls');
       if (!L.isRef) {
@@ -570,6 +587,14 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
       vpsBtn.disabled = Boolean(L.vpsBusy);
       vpsBtn.addEventListener('click', (e) => { e.stopPropagation(); openVpsUploadDialog(L); });
       controls.append(vpsBtn);
+      if (!L.isRef) {
+        const trainBtn = el('button', 'align-ws__layer-train', '🧬');
+        trainBtn.type = 'button';
+        trainBtn.title = '이 스캔으로 SuGaR(3D 텍스처) 학습을 시작합니다 (GPU, 1~2시간+)';
+        trainBtn.disabled = Boolean(L.trainBusy);
+        trainBtn.addEventListener('click', (e) => { e.stopPropagation(); startTrainingForLayer(L); });
+        controls.append(trainBtn);
+      }
       const vis = document.createElement('input');
       vis.type = 'checkbox'; vis.checked = L.visible; vis.title = '표시';
       vis.addEventListener('click', (e) => e.stopPropagation());
@@ -638,6 +663,63 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
         renderLayerList();
       } catch { /* 폴링 한 번 실패는 무시, 다음 tick 재시도 */ }
     }, 2000);
+  }
+
+  // ---- SuGaR 학습 job runner ("3D 텍스처" 탭에 쓸 결과 만들기) -----------------------
+  // 스캔 하나당 수 시간짜리 GPU 작업이라, VPS 폴링(2초)보다 훨씬 느슨한 5초 간격으로 확인한다.
+  // 페이지를 새로고침해도 서버(data/digital-twin-jobs.json)가 진행상황의 유일한 출처다 --
+  // resumeTrainingStatus()가 그룹을 열 때마다 다시 물어봐서 이어서 폴링을 재개한다.
+  async function startTrainingForLayer(L) {
+    if (!confirm(`'${L.id}' 스캔으로 SuGaR 학습을 시작할까요?\nGPU에서 1~2시간 이상 걸릴 수 있습니다.`)) return;
+    const polyMode = $('aw-train-poly').value;
+    const refinementTime = $('aw-train-refine').value;
+    try {
+      L.trainBusy = true;
+      L.trainStatus = '학습: 시작하는 중…';
+      renderLayerList();
+      const { name } = await startTraining(L.id, { polyMode, refinementTime });
+      L.trainStatus = '학습: 대기 중…';
+      renderLayerList();
+      pollTrainingStatus(L, name);
+    } catch (err) {
+      L.trainBusy = false;
+      L.trainStatus = `학습: 시작 실패 — ${err.message}`;
+      renderLayerList();
+    }
+  }
+
+  function pollTrainingStatus(L, jobId) {
+    const timer = setInterval(async () => {
+      try {
+        const job = await getTrainingStatus(jobId);
+        if (job.phase === 'done' || job.phase === 'error') {
+          clearInterval(timer);
+          L.trainBusy = false;
+          L.trainStatus = job.phase === 'done' ? '학습: 완료' : `학습: 실패 — ${job.error ?? '알 수 없는 오류'}`;
+          if (job.phase === 'done') onTrainingDone(job.name);
+        } else {
+          const q = job.queuePosition ? ` (대기 ${job.queuePosition}번째)` : '';
+          L.trainStatus = `학습: ${job.stageLabel}${q}`;
+        }
+        renderLayerList();
+      } catch { /* 폴링 한 번 실패는 무시, 다음 tick 재시도 */ }
+    }, 5000);
+  }
+
+  /** 그룹을 열 때(또는 새로고침 후) 지금 로드된 스캔 중 실행 중인 학습 job이 있으면 이어서 폴링. */
+  async function resumeTrainingStatus() {
+    try {
+      const { jobs } = await listTrainingJobs();
+      for (const L of layers) {
+        if (L.isRef) continue;
+        const job = jobs.find((j) => j.scanId === L.id && j.phase === 'running');
+        if (!job) continue;
+        L.trainBusy = true;
+        L.trainStatus = `학습: ${job.stageLabel}…`;
+        pollTrainingStatus(L, job.name);
+      }
+      renderLayerList();
+    } catch { /* 무시 -- 학습 버튼을 다시 눌러 상태를 확인할 수 있음 */ }
   }
 
   function select(L) {
@@ -813,6 +895,7 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {} } = {}
     // 뷰가 막 보이기 시작한 프레임에는 컨테이너 크기가 0 일 수 있어 한 번 더 맞춘다
     requestAnimationFrame(fitAll);
     setTimeout(fitAll, 300);
+    resumeTrainingStatus();
   }
 
   async function loadGroup(name) {

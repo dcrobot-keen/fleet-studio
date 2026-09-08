@@ -15,4 +15,6 @@ data/vda5050.json
 data/fleet-log.json
 data/settings.json
 data/sim-config.json
+data/digital-twin-jobs.json
+data/digital-twin-jobs/
 deploy/.env

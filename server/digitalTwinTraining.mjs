@@ -101,7 +101,16 @@ async function listTrainableScans(vpsDataDir) {
   return scans;
 }
 
-function colmapScriptContent({ logWsl, outputColmapWsl, scanWsl, datasetWsl }) {
+function colmapScriptContent({ logWsl, outputColmapWsl, scanWsl, datasetWsl, imageCount }) {
+  // exhaustive_matcher는 O(이미지수²) -- 실측: 1814장에서 매칭 단계만 13시간+ 예상(37×37 블록, 블록당
+  // ~70초). COLMAP 공식 권장대로 500장 넘으면 sequential_matcher(O(n), 촬영 순서로만 인접 비교)로
+  // 바꾼다 -- 어차피 iPhone 스캔은 걸어다니며 순서대로 찍은 영상이라 순차 매칭이 자연스럽다.
+  const useSequential = imageCount > 500;
+  const matcherStep = useSequential
+    ? `echo "##STEP## sequential_matcher" >> "$LOG"
+colmap sequential_matcher --database_path database.db --SiftMatching.use_gpu 0 >> "$LOG" 2>&1`
+    : `echo "##STEP## exhaustive_matcher" >> "$LOG"
+colmap exhaustive_matcher --database_path database.db --SiftMatching.use_gpu 0 >> "$LOG" 2>&1`;
   return `#!/usr/bin/env bash
 set -e
 set -o pipefail
@@ -117,8 +126,7 @@ echo "##STEP## feature_extractor" >> "$LOG"
 colmap feature_extractor --database_path database.db --image_path images \\
   --SiftExtraction.use_gpu 0 --ImageReader.single_camera_per_image 1 >> "$LOG" 2>&1
 
-echo "##STEP## exhaustive_matcher" >> "$LOG"
-colmap exhaustive_matcher --database_path database.db --SiftMatching.use_gpu 0 >> "$LOG" 2>&1
+${matcherStep}
 
 echo "##STEP## build_known_pose_model" >> "$LOG"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -481,6 +489,7 @@ export async function createDigitalTwinTrainingRouter({ repoRoot, dataDir }) {
           outputColmapWsl: toWslPath(outputColmapDir),
           scanWsl: toWslPath(scan.dir),
           datasetWsl: `$HOME/datasets/${name}`, // 따옴표 안 ~ 는 bash가 확장 안 해줌 -- $HOME 사용 (startTrainStage 쪽 주석 참고)
+          imageCount: scan.imageCount,
         }),
         'utf-8'
       );

@@ -441,11 +441,13 @@ export async function createDigitalTwinTrainingRouter({ repoRoot, dataDir }) {
       const outputColmapDir = resolve(twinRoot, 'data/output_colmap', name);
       await mkdir(outputColmapDir, { recursive: true });
 
-      // 1단계: Windows, 동기(빠름) -- 나쁜 스캔(프레임 부족 등)은 여기서 바로 400으로 알 수 있게.
+      // 1단계: Windows, 동기 -- 나쁜 스캔(프레임 부족 등)은 여기서 바로 400으로 알 수 있게.
+      // 실측: 1814장(가장 큰 실제 스캔)짜리는 ~50초 걸림 -- 60초로는 여유가 거의 없어 타임아웃으로
+      // 실패한 적이 있어서(실측 확인) 180초로 늘림.
       try {
         await execFileP('python', ['convert_to_colmap.py', scan.dir, outputColmapDir], {
           cwd: twinRoot,
-          timeout: 60_000,
+          timeout: 180_000,
           maxBuffer: 8 * 1024 * 1024,
         });
       } catch (err) {

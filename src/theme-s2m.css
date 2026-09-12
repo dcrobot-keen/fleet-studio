@@ -396,7 +396,11 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 .align-ws__layer.selected { border-color: var(--warn); background: rgba(245, 166, 35, .1); }
 .align-ws__layer.ref { border-color: rgba(79, 209, 197, .4); }
 .align-ws__sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
-.align-ws__layer-controls { display: flex; align-items: center; gap: 4px; }
+/* 그리드 1fr 트랙의 기본 min-width:auto를 안 꺼두면 이름/메타 텍스트의 min-content 너비가 그대로
+   유지돼서 ellipsis가 먹지 않고, 컨트롤(순서 이동·VPS·학습 버튼+표시 체크박스, 최대 5개)이 늘어나면
+   행 전체가 레일 너비를 넘어간다(실측: scrollWidth 294px > clientWidth 223px). */
+.align-ws__layer-main { min-width: 0; }
+.align-ws__layer-controls { display: flex; align-items: center; gap: 4px; flex: none; }
 .align-ws__layer-order {
   width: 20px; height: 20px; padding: 0; font-size: 9px; line-height: 1; border-radius: 5px;
   border: 1px solid var(--border); background: var(--panel-3); color: var(--text-dim); cursor: pointer;

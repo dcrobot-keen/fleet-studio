@@ -564,7 +564,9 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {}, onTra
       const sw = el('span', 'align-ws__sw');
       sw.style.background = `rgb(${L.color.join(',')})`;
       const main = el('div', 'align-ws__layer-main');
-      main.appendChild(el('div', 'align-ws__layer-name', L.id));
+      const nameEl = el('div', 'align-ws__layer-name', L.id);
+      nameEl.title = L.id; // 이름 칸이 좁아 ellipsis로 잘리므로 hover로 전체 이름 확인
+      main.appendChild(nameEl);
       const meta = L.isRef ? '기준 (고정)' : `${L.method}${L.approved ? ' · 승인' : ''}${L.dirty ? ' · 수정됨' : ''}`;
       main.appendChild(el('div', 'align-ws__layer-meta', meta));
       if (L.vpsStatus) main.appendChild(el('div', 'align-ws__layer-meta', L.vpsStatus));

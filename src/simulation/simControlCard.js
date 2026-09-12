@@ -1,6 +1,7 @@
-// 설정 › 시뮬레이터 카드 -- 지금까지 deploy/.env 를 손으로 고치고 터미널에서 docker compose 를
+// 시뮬레이션 레일 맨 위의 시뮬레이터 카드 -- 지금까지 deploy/.env 를 손으로 고치고 터미널에서 docker compose 를
 // 다시 실행해야 했던 일(어떤 월드를 로드할지 · 로봇을 몇 대 띄울지 · 시작/정지)을 화면에서 하게 해준다.
 // server/simControl.mjs 참고. brokerSettings.js 의 카드 관례(el/field/textInput, robot-button 버튼)를 그대로 따른다.
+// 원래 설정 탭에 있었지만 "켜고 끄는" 것은 그 화면에 두기로 해서(IA 2차 5단계) 시뮬레이션 화면으로 옮겼다.
 import { getSimWorlds, getSimConfig, startSim, stopSim, getSimStatus } from './simControlApi.js';
 
 const MAX_ROBOTS = 2;

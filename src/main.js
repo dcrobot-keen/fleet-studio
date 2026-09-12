@@ -39,6 +39,7 @@ import { importFloorImageFile } from './imports/importFloorImage.js';
 import { createSite3D } from './site3d/site3dView.js';
 import { createSimStatusPanel } from './simulation/simStatusPanel.js';
 import { createSimViewerFrame } from './simulation/simViewerFrame.js';
+import { createSimControlCard } from './simulation/simControlCard.js';
 import { openRobotDrawer } from './robots/robotDrawer.js';
 import { createJobsDrawer } from './jobs/jobsDrawer.js';
 import { listRobots } from './robots/robotApi.js';
@@ -359,8 +360,15 @@ function activateTab(tabKey) {
 
   if (tabKey === 'simulation') {
     if (!simulationTab) {
-      simulationTab = createPathfindingTab(document.getElementById('simulation-map'), document.getElementById('simulation-panel'), 'obstacle', { variant: 'demo' });
+      const simPanelEl = document.getElementById('simulation-panel');
+      simulationTab = createPathfindingTab(document.getElementById('simulation-map'), simPanelEl, 'obstacle', { variant: 'demo' });
       simulationTab.fitToData();
+      // 시뮬레이터 시작/정지 · 월드 · 로봇 구성은 이 화면의 레일 맨 위에 -- "켜고 끄는" 것은 그 화면에 (IA 2차 5단계).
+      // createPathfindingTab 이 레일을 비우고 채우므로 그 뒤에 앞에 끼운다.
+      const simCard = document.createElement('div');
+      createSimControlCard(simCard, { projectId: activeProjectId, projectName: activeProjectName });
+      simCard.classList.add('sim-rail-card');
+      simPanelEl.prepend(simCard);
       createSimStatusPanel(document.getElementById('simulation-status'));
     }
     simulationTab.resize();

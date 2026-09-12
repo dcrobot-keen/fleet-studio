@@ -40,6 +40,7 @@ import { createSite3D } from './site3d/site3dView.js';
 import { createSimStatusPanel } from './simulation/simStatusPanel.js';
 import { createSimViewerFrame } from './simulation/simViewerFrame.js';
 import { openRobotDrawer } from './robots/robotDrawer.js';
+import { createJobsDrawer } from './jobs/jobsDrawer.js';
 import { listRobots } from './robots/robotApi.js';
 
 createProjectSelector(document.getElementById('project-selector'));
@@ -195,6 +196,7 @@ let robotsTab = null;
 let settingsTab = null;
 let alignWorkspace = null;
 let digitalTwinPanel = null;
+let jobsDrawer = null; // 상단 바 "작업" 배지 → 드로어 (아래 GNB 텔레메트리 옆에서 만든다)
 let mapsSub = '2d';
 
 // 탭 = 정보 구조(플릿 스튜디오 기획서 §5): 지도(2D/3D) · 로봇 · 운영 · 시뮬레이션 · 설정.
@@ -218,15 +220,8 @@ function activateMapsSub(sub) {
         // 사용자가 어디로 가야 하는지 토스트가 알려준다.
         onTrainingDone: (name) => {
           digitalTwinPanel?.refresh();
-          showFleetToast(`3D 텍스처 학습 완료: ${name}`, 12000, {
-            label: '보기',
-            onClick: async () => {
-              setView3dMode('texture');
-              activateTab('maps');
-              activateMapsSub('3d');
-              await digitalTwinPanel?.select(name);
-            },
-          });
+          jobsDrawer?.refresh();
+          showFleetToast(`3D 텍스처 학습 완료: ${name}`, 12000, { label: '보기', onClick: () => openTextureResult(name) });
         },
       });
     }
@@ -479,6 +474,24 @@ if (robotDevBtn && robotModelBtn) {
 // 실시간 GNB 텔레메트리 (MQTT 브로커 상태 & 온라인 로봇 대수)
 const gnbMqttBadge = document.getElementById('gnb-mqtt-badge');
 const gnbFleetCount = document.getElementById('gnb-fleet-count');
+
+// 학습 결과(name)를 지도 › 3D › 텍스처에서 연다 -- 학습 완료 토스트의 "보기"와 작업 드로어의 "3D에서 보기"가 같이 쓴다
+function openTextureResult(name) {
+  setView3dMode('texture');
+  activateTab('maps');
+  activateMapsSub('3d');
+  digitalTwinPanel?.select(name);
+}
+
+// 작업 배지 + 드로어: 드로어는 닫혀 있어도 15초마다 학습 목록을 읽어 배지 숫자를 맞춘다
+const gnbJobsBadge = document.getElementById('gnb-jobs-badge');
+const gnbJobsText = document.getElementById('gnb-jobs-text');
+jobsDrawer = createJobsDrawer({ onOpenResult: openTextureResult });
+jobsDrawer.onCountChange((n) => {
+  if (gnbJobsText) gnbJobsText.textContent = n ? `작업 ${n}` : '작업';
+  if (gnbJobsBadge) gnbJobsBadge.classList.toggle('busy', n > 0);
+});
+if (gnbJobsBadge) gnbJobsBadge.addEventListener('click', () => jobsDrawer.toggle());
 
 function updateMqttStatus(connected) {
   if (!gnbMqttBadge) return;

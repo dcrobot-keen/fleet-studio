@@ -130,15 +130,25 @@ export async function createDigitalTwinRouter({ repoRoot }) {
         res.status(400).json({ error: '원본 .obj/.png 쌍을 찾을 수 없습니다.' });
         return;
       }
-      generating.set(name, { status: 'running' });
+      const startedAt = new Date().toISOString();
+      generating.set(name, { status: 'running', startedAt, finishedAt: null });
       const outputPath = join(dir, 'viewer.html');
       generateViewer({ twinRoot, obj: join(dir, source.obj), png: join(dir, source.png), output: outputPath, title: name })
-        .then(() => generating.set(name, { status: 'done' }))
-        .catch((err) => generating.set(name, { status: 'error', error: err.message }));
+        .then(() => generating.set(name, { status: 'done', startedAt, finishedAt: new Date().toISOString() }))
+        .catch((err) => generating.set(name, { status: 'error', error: err.message, startedAt, finishedAt: new Date().toISOString() }));
       res.status(202).json({ status: 'running' });
     } catch (err) {
       res.status(err.status ?? 500).json({ error: err.message });
     }
+  });
+
+  // 이 프로세스가 돌린 뷰어 생성 이력 (작업 드로어용). 메모리에만 있으므로 재시작하면 빈다 -- 뷰어 자체는
+  // results/<name>/viewer.html 로 남아 GET /digital-twin/results 의 hasViewer 에 보인다.
+  router.get('/digital-twin/generations', (req, res) => {
+    const list = [...generating.entries()]
+      .map(([name, g]) => ({ name, ...g }))
+      .sort((a, b) => String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')));
+    res.json({ generations: list });
   });
 
   router.get('/digital-twin/results/:name/generate/status', (req, res) => {

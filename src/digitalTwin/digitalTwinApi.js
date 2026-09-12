@@ -21,6 +21,11 @@ export function getDigitalTwinGenerateStatus(name) {
   return request(`/api/digital-twin/results/${encodeURIComponent(name)}/generate/status`);
 }
 
+/** 이 서버 프로세스가 돌린 뷰어 생성 이력 -- { generations: [{ name, status, error?, startedAt, finishedAt }] } (최신순) */
+export function listDigitalTwinGenerations() {
+  return request('/api/digital-twin/generations');
+}
+
 /** fetch 없이 URL만 -- iframe src로 바로 쓴다. */
 export function digitalTwinViewerUrl(name) {
   return `/api/digital-twin/results/${encodeURIComponent(name)}/viewer`;

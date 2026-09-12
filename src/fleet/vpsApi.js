@@ -28,6 +28,11 @@ export function getVpsScanStatus(scanName) {
   return request(`/api/vps/scans/${encodeURIComponent(scanName)}`);
 }
 
+/** 이 프록시가 넘긴 빌드들의 진행 목록 -- { jobs: [{ scanName, status, roomId, error, replace, startedAt, updatedAt, finishedAt }] } (최신순) */
+export function listVpsJobs() {
+  return request('/api/vps/jobs');
+}
+
 /**
  * 원본 스캔 zip을 VPS 서버에 등록(빌드는 비동기 -- 202 받으면 getVpsScanStatus로 폴링).
  * @param {string} scanName room_id로 쓰일 이름 -- 정합 그룹의 스캔 id와 반드시 같아야 한다.

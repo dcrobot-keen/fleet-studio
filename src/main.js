@@ -230,14 +230,6 @@ function activateMapsSub(sub) {
     else digitalTwinPanel.refresh();
     return;
   }
-  if (sub === 'studio') {
-    const frame = document.getElementById('studio-frame');
-    const link = document.getElementById('link-studio-external');
-    const studioUrl = getServiceUrl('studio');
-    if (frame && (!frame.src || !frame.src.includes('8000'))) frame.src = studioUrl;
-    if (link) link.href = studioUrl;
-    return;
-  }
   // 3D: 현장 3D(네이티브 three.js) 또는 포인트클라우드
   if (view3dMode === 'points') {
     if (!view3d) {
@@ -275,14 +267,6 @@ function setView3dMode(mode) {
 }
 for (const b of document.querySelectorAll('[data-view3d]')) b.addEventListener('click', () => { if (!b.disabled) setView3dMode(b.dataset.view3d); });
 setView3dMode('site'); // 초기: 현장 3D 컨테이너를 보이게 (HTML 은 hidden 으로 시작)
-
-// 스튜디오 프로젝트 새로고침 버튼
-const studioRefreshBtn = document.getElementById('btn-studio-refresh');
-if (studioRefreshBtn) {
-  studioRefreshBtn.addEventListener('click', () => {
-    window.location.reload();
-  });
-}
 
 // 시뮬레이션 주 영역: 3D 뷰(시뮬레이터 뷰어 임베드) / 2D 데모(회피 애니메이션 지도) 토글, 로봇 시점 전환
 const simMapEl = document.getElementById('simulation-map');
@@ -622,10 +606,12 @@ btnViewMesh.addEventListener('click', () => {
 {
   const q = new URLSearchParams(location.search);
   const tab = q.get('tab');
-  const sub = q.get('sub');
-  if (sub && ['2d', '3d', 'align'].includes(sub)) mapsSub = sub;
+  // 옛 정합 스튜디오 iframe 딥링크(?sub=studio)는 정합 워크스페이스로 보낸다 (뷰는 제거됨)
+  const rawSub = q.get('sub');
+  const sub = rawSub === 'studio' ? 'align' : rawSub;
+  if (sub && ['2d', '3d', 'align', 'texture'].includes(sub)) mapsSub = sub;
   if (tab && ['maps', 'robots', 'operate', 'simulation', 'settings'].includes(tab)) activateTab(tab);
-  else if (sub) activateMapsSub(sub);
+  else if (sub && ['2d', '3d', 'align', 'texture'].includes(sub)) activateMapsSub(sub);
   // &detail=<시리얼|이름>: 로봇 상세 드로어를 바로 연다 (캡처·공유용)
   const detail = q.get('detail');
   if (tab === 'robots' && detail) {

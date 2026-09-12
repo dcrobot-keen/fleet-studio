@@ -406,18 +406,31 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 }
 .align-ws__layer-order:hover:not(:disabled) { color: var(--text); filter: brightness(1.15); }
 .align-ws__layer-order:disabled { opacity: .3; cursor: not-allowed; }
-.align-ws__layer-vps {
-  width: 22px; height: 20px; padding: 0; font-size: 11px; line-height: 1; border-radius: 5px;
+.align-ws__layer-menu {
+  width: 22px; height: 20px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px;
   border: 1px solid var(--border); background: var(--panel-3); color: var(--text-dim); cursor: pointer;
 }
-.align-ws__layer-vps:hover:not(:disabled) { color: var(--text); filter: brightness(1.15); }
-.align-ws__layer-vps:disabled { opacity: .3; cursor: not-allowed; }
-.align-ws__layer-train {
-  width: 22px; height: 20px; padding: 0; font-size: 11px; line-height: 1; border-radius: 5px;
-  border: 1px solid var(--border); background: var(--panel-3); color: var(--text-dim); cursor: pointer;
+.align-ws__layer-menu:hover { color: var(--text); filter: brightness(1.15); }
+.align-ws__layer-menu svg { display: block; }
+/* 행 끝 ⋯ 메뉴 -- body 에 붙는 작은 팝업. 항목 = 라벨 + 한 줄 힌트 */
+.align-ws__menu {
+  position: fixed; z-index: 1001; min-width: 240px; padding: 6px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--border); box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  display: flex; flex-direction: column; gap: 2px;
 }
-.align-ws__layer-train:hover:not(:disabled) { color: var(--text); filter: brightness(1.15); }
-.align-ws__layer-train:disabled { opacity: .3; cursor: not-allowed; }
+.align-ws__menu-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: 7px; border: 0; background: transparent; color: var(--text); cursor: pointer; font: inherit;
+}
+.align-ws__menu-item:hover:not(:disabled), .align-ws__menu-item:focus-visible { background: rgba(79, 209, 197, .1); outline: none; }
+.align-ws__menu-item:disabled { opacity: .45; cursor: not-allowed; }
+.align-ws__menu-label { font-size: 13px; font-weight: 500; }
+.align-ws__menu-hint { font-size: 11px; color: var(--text-faint); }
+/* 학습 다이얼로그 -- 가져오기 대화상자와 같은 껍데기(.import-dialog), 안에 옵션 두 줄 */
+.align-ws__dialog { width: min(520px, 100%); }
+.align-ws__dialog-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.align-ws__dialog-fields label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-dim); }
+.align-ws__dialog-fields select { width: 100%; }
 .align-ws__layer-name { font-size: 12.5px; font-weight: 600; color: var(--text); font-family: var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .align-ws__layer-meta { font-size: 11px; color: var(--text-faint); }
 .align-ws__selname { font-family: var(--font-mono); font-size: 12.5px; color: var(--text); }

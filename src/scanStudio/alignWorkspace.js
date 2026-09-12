@@ -47,6 +47,8 @@ const OTHER_PALETTE = [
   [178, 140, 235], [235, 158, 90], [111, 201, 209], [201, 111, 201],
 ];
 const alignProjection = new Projection({ code: 'scan-align-plane', units: 'm', extent: [-500, -500, 500, 500] });
+// 앱 공통 SVG 아이콘 세트(24 viewBox, stroke 1.5)와 같은 규격 -- 정합 행의 ⋯ 메뉴 버튼
+const ICON_MORE = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" stroke="none" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -83,21 +85,6 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {}, onTra
       <section class="align-ws__section">
         <div class="align-ws__title">스캔 <span id="aw-count" class="align-ws__count"></span></div>
         <div id="aw-layers" class="align-ws__layers"></div>
-      </section>
-      <section class="align-ws__section">
-        <div class="align-ws__title">3D 텍스처 학습 옵션</div>
-        <div class="align-ws__row">
-          <select id="aw-train-poly" class="pathfinding-select" title="메시 해상도">
-            <option value="low">저해상도 (빠름)</option>
-            <option value="high">고해상도 (느림)</option>
-          </select>
-          <select id="aw-train-refine" class="pathfinding-select" title="정제 반복 횟수">
-            <option value="short">짧게</option>
-            <option value="medium">보통</option>
-            <option value="long">길게</option>
-          </select>
-        </div>
-        <div class="align-ws__note">스캔 목록의 🧬 버튼으로 이 설정으로 SuGaR 학습을 시작합니다 (GPU, 1~2시간+).</div>
       </section>
       <section class="align-ws__section" id="aw-floor-row" hidden>
         <label class="align-ws__check"><input type="checkbox" id="aw-floor" checked> 앱 바닥 이미지</label>
@@ -583,20 +570,14 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {}, onTra
         downBtn.addEventListener('click', (e) => { e.stopPropagation(); moveLayer(L, 1); });
         controls.append(upBtn, downBtn);
       }
-      const vpsBtn = el('button', 'align-ws__layer-vps', '📡');
-      vpsBtn.type = 'button';
-      vpsBtn.title = '이 스캔의 원본 zip을 VPS 서버에 등록합니다 (room_id = 스캔 id)';
-      vpsBtn.disabled = Boolean(L.vpsBusy);
-      vpsBtn.addEventListener('click', (e) => { e.stopPropagation(); openVpsUploadDialog(L); });
-      controls.append(vpsBtn);
-      if (!L.isRef) {
-        const trainBtn = el('button', 'align-ws__layer-train', '🧬');
-        trainBtn.type = 'button';
-        trainBtn.title = '이 스캔으로 SuGaR(3D 텍스처) 학습을 시작합니다 (GPU, 1~2시간+)';
-        trainBtn.disabled = Boolean(L.trainBusy);
-        trainBtn.addEventListener('click', (e) => { e.stopPropagation(); startTrainingForLayer(L); });
-        controls.append(trainBtn);
-      }
+      // 정합과 무관한 "스캔 준비" 액션(VPS 등록 · 3D 텍스처 학습)은 행 끝 ⋯ 메뉴 하나에 -- 행에는
+      // 정합 조작(순서 · 표시)만 남아 컨트롤이 최대 셋이다.
+      const menuBtn = el('button', 'align-ws__layer-menu');
+      menuBtn.type = 'button';
+      menuBtn.title = '이 스캔으로 할 수 있는 것';
+      menuBtn.innerHTML = ICON_MORE;
+      menuBtn.addEventListener('click', (e) => { e.stopPropagation(); openScanMenu(L, menuBtn); });
+      controls.append(menuBtn);
       const vis = document.createElement('input');
       vis.type = 'checkbox'; vis.checked = L.visible; vis.title = '표시';
       vis.addEventListener('click', (e) => e.stopPropagation());
@@ -671,10 +652,100 @@ export function createAlignWorkspace(rootEl, { onToast = (_message) => {}, onTra
   // 스캔 하나당 수 시간짜리 GPU 작업이라, VPS 폴링(2초)보다 훨씬 느슨한 5초 간격으로 확인한다.
   // 페이지를 새로고침해도 서버(data/digital-twin-jobs.json)가 진행상황의 유일한 출처다 --
   // resumeTrainingStatus()가 그룹을 열 때마다 다시 물어봐서 이어서 폴링을 재개한다.
+  // 행 끝 ⋯ 메뉴: 이 스캔으로 할 수 있는 "준비" 액션. 정합 행이 아니라 문서 body에 붙여 레일의
+  // overflow/스택 순서에 안 갇히게 하고, 바깥 클릭·Esc·다른 행 클릭이면 닫는다.
+  let openMenu = null;
+  function closeScanMenu() {
+    if (!openMenu) return;
+    openMenu.remove();
+    openMenu = null;
+    document.removeEventListener('pointerdown', onDocPointerDown, true);
+    document.removeEventListener('keydown', onDocKeyDown, true);
+  }
+  function onDocPointerDown(e) { if (openMenu && !openMenu.contains(e.target)) closeScanMenu(); }
+  function onDocKeyDown(e) { if (e.key === 'Escape') closeScanMenu(); }
+  function openScanMenu(L, anchor) {
+    if (openMenu) { closeScanMenu(); return; }
+    const menu = el('div', 'align-ws__menu');
+    menu.setAttribute('role', 'menu');
+    const item = (label, hint, { disabled = false, onPick }) => {
+      const b = el('button', 'align-ws__menu-item');
+      b.type = 'button'; b.disabled = disabled; b.setAttribute('role', 'menuitem');
+      b.appendChild(el('span', 'align-ws__menu-label', label));
+      if (hint) b.appendChild(el('span', 'align-ws__menu-hint', hint));
+      b.addEventListener('click', (e) => { e.stopPropagation(); closeScanMenu(); onPick(); });
+      menu.appendChild(b);
+    };
+    item('VPS에 등록…', L.vpsBusy ? '등록 진행 중' : '위치 보정용 room 으로 (room_id = 스캔 id)', { disabled: Boolean(L.vpsBusy), onPick: () => openVpsUploadDialog(L) });
+    if (!L.isRef) {
+      item('3D 텍스처 학습…', L.trainBusy ? '학습 진행 중' : 'COLMAP 정제 → GPU 학습 → 뷰어 (1~4시간)', { disabled: Boolean(L.trainBusy), onPick: () => startTrainingForLayer(L) });
+    }
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    const left = Math.min(r.left, window.innerWidth - mw - 8);
+    const top = r.bottom + 4 + mh > window.innerHeight ? r.top - mh - 4 : r.bottom + 4;
+    menu.style.left = `${Math.max(8, left)}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    openMenu = menu;
+    document.addEventListener('pointerdown', onDocPointerDown, true);
+    document.addEventListener('keydown', onDocKeyDown, true);
+    menu.querySelector('button:not(:disabled)')?.focus();
+  }
+
+  /** 학습 옵션은 레일이 아니라 시작 직전 이 다이얼로그에서만 고른다 -- 정합 작업 중엔 쓸 일이 없어서.
+   * @returns {Promise<{ polyMode: string, refinementTime: string } | null>} 취소면 null */
+  function openTrainingDialog(L) {
+    return new Promise((resolve) => {
+      const overlay = el('div', 'import-overlay');
+      overlay.innerHTML = `
+        <div class="import-dialog align-ws__dialog" role="dialog" aria-modal="true" aria-labelledby="aw-train-title">
+          <div class="import-dialog__head">
+            <div>
+              <div id="aw-train-title" class="import-dialog__title">3D 텍스처 학습</div>
+              <div class="import-dialog__sub"><b>${L.id}</b> 스캔으로 COLMAP 포즈 정제 → SuGaR 학습 → 뷰어 생성까지 자동으로 돕니다. GPU에서 1~4시간, 진행은 이 행과 3D 텍스처 탭에서 확인합니다.</div>
+            </div>
+            <button class="robot-button" data-act="cancel" aria-label="닫기">닫기</button>
+          </div>
+          <div class="align-ws__dialog-fields">
+            <label>메시 해상도
+              <select class="pathfinding-select" data-field="poly">
+                <option value="low">저해상도 · 빠름 (20만 정점)</option>
+                <option value="high">고해상도 · 느림 (100만 정점)</option>
+              </select>
+            </label>
+            <label>정제 반복
+              <select class="pathfinding-select" data-field="refine">
+                <option value="short">짧게 · 2,000회</option>
+                <option value="medium">보통 · 7,000회</option>
+                <option value="long">길게 · 15,000회</option>
+              </select>
+            </label>
+          </div>
+          <div class="import-dialog__foot">
+            <span class="import-dialog__status">서버 재시작에도 이어서 진행됩니다.</span>
+            <button class="robot-button" data-act="cancel">취소</button>
+            <button class="robot-button robot-button-primary" data-act="start">학습 시작</button>
+          </div>
+        </div>`;
+      const done = (value) => { overlay.remove(); document.removeEventListener('keydown', onKey); resolve(value); };
+      const onKey = (e) => { if (e.key === 'Escape') done(null); };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) done(null); });
+      for (const b of overlay.querySelectorAll('[data-act="cancel"]')) b.addEventListener('click', () => done(null));
+      overlay.querySelector('[data-act="start"]').addEventListener('click', () => done({
+        polyMode: overlay.querySelector('[data-field="poly"]').value,
+        refinementTime: overlay.querySelector('[data-field="refine"]').value,
+      }));
+      document.addEventListener('keydown', onKey);
+      document.body.appendChild(overlay);
+      overlay.querySelector('[data-field="poly"]').focus();
+    });
+  }
+
   async function startTrainingForLayer(L) {
-    if (!confirm(`'${L.id}' 스캔으로 SuGaR 학습을 시작할까요?\nGPU에서 1~2시간 이상 걸릴 수 있습니다.`)) return;
-    const polyMode = $('aw-train-poly').value;
-    const refinementTime = $('aw-train-refine').value;
+    const picked = await openTrainingDialog(L);
+    if (!picked) return;
+    const { polyMode, refinementTime } = picked;
     try {
       L.trainBusy = true;
       L.trainStatus = '학습: 시작하는 중…';

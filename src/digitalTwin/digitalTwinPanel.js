@@ -115,6 +115,15 @@ export function createDigitalTwinPanel(rootEl) {
     }
   });
 
+  /** 목록을 다시 읽고 name 결과를 고른다 -- 학습 완료 토스트의 "보기"에서 쓴다. */
+  async function select(name) {
+    await refresh();
+    if (results.some((r) => r.name === name)) {
+      $('dt-select').value = name;
+      renderFrame();
+    }
+  }
+
   refresh();
-  return { refresh, destroy() { clearInterval(pollTimer); } };
+  return { refresh, select, destroy() { clearInterval(pollTimer); } };
 }

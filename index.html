@@ -59,10 +59,6 @@
               <span class="subnav-tab-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="12" height="12" rx="1.5"/><rect x="9" y="9" width="12" height="12" rx="1.5"/></svg></span>
               <span>정합</span>
             </button>
-            <button class="subnav-tab" data-sub="texture">
-              <span class="subnav-tab-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a13 13 0 0 1 0 18 13 13 0 0 1 0-18z"/></svg></span>
-              <span>3D 텍스처</span>
-            </button>
           </div>
           <div class="subnav-actions">
             <button id="btn-import" class="subnav-action-btn wizard-launch-btn" title="iPhone 스캔(.zip/.usdz) · 슬라이스맵(.slicemap.json + 바닥 이미지) · 포인트클라우드(.pcd) -- 종류는 자동 판별. 지도 위에 파일을 놓아도 됩니다">
@@ -158,11 +154,14 @@
         <div class="sim-mainbar__tabs" role="tablist">
           <button class="sim-view-btn active" data-view3d="site">현장 3D</button>
           <button class="sim-view-btn" data-view3d="points" id="btn-view3d-points" disabled title="PCD 를 가져오면 켜집니다">포인트클라우드</button>
+          <button class="sim-view-btn" data-view3d="texture" title="SuGaR 학습 결과(디지털 트윈) 뷰어">텍스처</button>
         </div>
         <span id="view3d-note" class="sim-mainbar__label">벽 · 바닥 이미지 · 스캔 메시 · 플릿 로봇(실기·시뮬)</span>
         <span class="sim-mainbar__spacer"></span>
       </div>
       <div id="site3d" hidden></div>
+      <!-- 3D › 텍스처: SuGaR 결과 뷰어 (src/digitalTwin/digitalTwinPanel.js) -- IA 2차 3단계에서 별도 서브탭 "3D 텍스처"를 여기로 합침 -->
+      <div id="view3d-texture" hidden></div>
       <div id="view3d-points" hidden>
         <div id="mesh-panel">
           <div class="mesh-buttons">
@@ -176,7 +175,6 @@
 
     <!-- 지도 › 다중 스캔 정합: 스튜디오 워크스페이스의 네이티브(OpenLayers) 구현 (src/scanStudio/alignWorkspace.js) -->
     <div id="view-align" class="view" data-view="align"></div>
-    <div id="view-texture" class="view" data-view="texture"></div>
 
     <!-- 운영: 왼쪽 로봇 레일(플릿 보드) · 가운데 지도 + 액션 바 · 오른쪽 주문 목록/현장 요약 -->
     <div id="operate" class="view view-operate" data-view="operate">

@@ -442,10 +442,19 @@ button:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 .align-ws .ol-scale-line { left: 8px; bottom: 8px; }
 
 /* ---- 지도 › 3D 텍스처 (dc-vps-digital-twin 결과 뷰어, 읽기 전용) ---- */
-.dt-panel.active { display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+/* 3D › 텍스처 소스: #view3d 안의 컨테이너(#view3d-texture)가 hidden 이 아닐 때 그리드로 -- 서브탭이던 때의
+   .view.active 의존을 없앴다 */
+.dt-panel { display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+.view-3d > #view3d-texture { flex: 1; min-height: 0; }
 .dt-panel__view { position: relative; min-width: 0; background: #000; display: flex; align-items: center; justify-content: center; }
 .dt-panel__frame { width: 100%; height: 100%; border: 0; }
 .dt-panel__empty { color: var(--text-faint); }
+/* 토스트 오른쪽 끝 액션 버튼 (학습 완료 → "보기") */
+.fleet-toast__action {
+  margin-left: 10px; padding: 3px 10px; border-radius: 6px; border: 1px solid rgba(79, 209, 197, .45);
+  background: rgba(79, 209, 197, .12); color: var(--accent); font: 600 12px var(--font-ui); cursor: pointer; white-space: nowrap;
+}
+.fleet-toast__action:hover { background: rgba(79, 209, 197, .22); }
 
 /* ---- 셸 정리 (IA 점검 2026-09-06): 화면 헤더 줄 제거, 단일 탭 화면은 리본도 숨김, 아이콘 한 세트 ---- */
 body.no-ribbon #app-header { height: var(--topbar-h); }

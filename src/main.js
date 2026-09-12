@@ -214,7 +214,20 @@ function activateMapsSub(sub) {
     if (!alignWorkspace) {
       alignWorkspace = createAlignWorkspace(document.getElementById('view-align'), {
         onToast: showFleetToast,
-        onTrainingDone: () => digitalTwinPanel?.refresh(),
+        // 학습(1~4시간)이 끝나면 결과가 있는 3D › 텍스처로 바로 갈 수 있게 -- 옛 "3D 텍스처" 탭이 사라져서
+        // 사용자가 어디로 가야 하는지 토스트가 알려준다.
+        onTrainingDone: (name) => {
+          digitalTwinPanel?.refresh();
+          showFleetToast(`3D 텍스처 학습 완료: ${name}`, 12000, {
+            label: '보기',
+            onClick: async () => {
+              setView3dMode('texture');
+              activateTab('maps');
+              activateMapsSub('3d');
+              await digitalTwinPanel?.select(name);
+            },
+          });
+        },
       });
     }
     // 스캔 위저드가 방금 등록한 그룹을 넘겨줬으면(pendingAlignGroup.js), 그룹이 여러 개라 자동으로
@@ -225,12 +238,11 @@ function activateMapsSub(sub) {
     });
     return;
   }
-  if (sub === 'texture') {
-    if (!digitalTwinPanel) digitalTwinPanel = createDigitalTwinPanel(document.getElementById('view-texture'));
-    else digitalTwinPanel.refresh();
+  // 3D: 현장 3D(네이티브 three.js) · 포인트클라우드 · 텍스처(SuGaR 결과 뷰어) 세 소스 중 하나
+  if (view3dMode === 'texture') {
+    ensureTexturePanel();
     return;
   }
-  // 3D: 현장 3D(네이티브 three.js) 또는 포인트클라우드
   if (view3dMode === 'points') {
     if (!view3d) {
       view3d = createView3D(view3dEl);
@@ -253,17 +265,27 @@ function activateMapsSub(sub) {
 }
 let site3d = null;
 
-// 지도 › 3D 토글: 현장 3D / 포인트클라우드
+// 지도 › 3D 소스 토글: 현장 3D / 포인트클라우드 / 텍스처(SuGaR 디지털 트윈 결과)
 let view3dMode = 'site';
+const VIEW3D_NOTE = {
+  site: '벽 · 바닥 이미지 · 스캔 메시 · 플릿 로봇(실기·시뮬)',
+  texture: 'SuGaR 학습 결과 -- 정합의 스캔 ⋯ 메뉴에서 학습을 시작합니다',
+};
+function ensureTexturePanel() {
+  if (!digitalTwinPanel) digitalTwinPanel = createDigitalTwinPanel(document.getElementById('view3d-texture'));
+  else digitalTwinPanel.refresh();
+}
 function setView3dMode(mode) {
   view3dMode = mode;
   for (const b of document.querySelectorAll('[data-view3d]')) b.classList.toggle('active', b.dataset.view3d === mode);
   const siteEl = document.getElementById('site3d');
   if (siteEl) siteEl.hidden = mode !== 'site';
   if (view3dEl) view3dEl.hidden = mode !== 'points';
+  const textureEl = document.getElementById('view3d-texture');
+  if (textureEl) textureEl.hidden = mode !== 'texture';
   const note = document.getElementById('view3d-note');
-  if (note) note.textContent = mode === 'site' ? '벽 · 바닥 이미지 · 스캔 메시 · 플릿 로봇(실기·시뮬)' : `가져온 포인트클라우드 ${currentPoints.length.toLocaleString()}개`;
-  if (mode === 'points' && mapsSub === '3d') activateMapsSub('3d');
+  if (note) note.textContent = VIEW3D_NOTE[mode] ?? `가져온 포인트클라우드 ${currentPoints.length.toLocaleString()}개`;
+  if ((mode === 'points' || mode === 'texture') && mapsSub === '3d') activateMapsSub('3d');
 }
 for (const b of document.querySelectorAll('[data-view3d]')) b.addEventListener('click', () => { if (!b.disabled) setView3dMode(b.dataset.view3d); });
 setView3dMode('site'); // 초기: 현장 3D 컨테이너를 보이게 (HTML 은 hidden 으로 시작)
@@ -411,20 +433,29 @@ window.addEventListener('message', (e) => {
   }
 });
 
-function showFleetToast(message, duration = 4500) {
+/** @param {{ label: string, onClick: () => void } | null} [action] 오른쪽 끝 버튼 하나 -- 누르면 토스트가 닫힌다 */
+function showFleetToast(message, duration = 4500, action = null) {
   const existing = document.querySelector('.fleet-toast');
   if (existing) existing.remove();
 
   const toast = document.createElement('div');
   toast.className = 'fleet-toast';
   toast.innerHTML = `<span class="fleet-toast-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span> <span>${message}</span>`;
-  document.body.appendChild(toast);
-
-  setTimeout(() => {
+  const dismiss = () => {
     toast.style.transition = 'opacity 0.3s ease';
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 300);
-  }, duration);
+  };
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'fleet-toast__action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { dismiss(); action.onClick(); });
+    toast.appendChild(btn);
+  }
+  document.body.appendChild(toast);
+  setTimeout(dismiss, duration);
 }
 
 // 로봇 탭 서브내비게이션 연동
@@ -606,12 +637,13 @@ btnViewMesh.addEventListener('click', () => {
 {
   const q = new URLSearchParams(location.search);
   const tab = q.get('tab');
-  // 옛 정합 스튜디오 iframe 딥링크(?sub=studio)는 정합 워크스페이스로 보낸다 (뷰는 제거됨)
+  // 옛 딥링크: ?sub=studio(정합 스튜디오 iframe, 제거됨) → 정합, ?sub=texture(옛 "3D 텍스처" 탭) → 3D › 텍스처
   const rawSub = q.get('sub');
-  const sub = rawSub === 'studio' ? 'align' : rawSub;
-  if (sub && ['2d', '3d', 'align', 'texture'].includes(sub)) mapsSub = sub;
+  const sub = rawSub === 'studio' ? 'align' : rawSub === 'texture' ? '3d' : rawSub;
+  if (rawSub === 'texture') setView3dMode('texture');
+  if (sub && ['2d', '3d', 'align'].includes(sub)) mapsSub = sub;
   if (tab && ['maps', 'robots', 'operate', 'simulation', 'settings'].includes(tab)) activateTab(tab);
-  else if (sub && ['2d', '3d', 'align', 'texture'].includes(sub)) activateMapsSub(sub);
+  else if (sub && ['2d', '3d', 'align'].includes(sub)) activateMapsSub(sub);
   // &detail=<시리얼|이름>: 로봇 상세 드로어를 바로 연다 (캡처·공유용)
   const detail = q.get('detail');
   if (tab === 'robots' && detail) {

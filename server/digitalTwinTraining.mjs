@@ -101,7 +101,7 @@ async function listTrainableScans(vpsDataDir) {
   return scans;
 }
 
-function colmapScriptContent({ logWsl, outputColmapWsl, scanWsl, datasetWsl, imageCount }) {
+function colmapScriptContent({ logWsl, outputColmapWsl, scanWsl, datasetWsl, workWsl, imageCount }) {
   // exhaustive_matcher는 O(이미지수²) -- 실측: 1814장에서 매칭 단계만 13시간+ 예상(37×37 블록, 블록당
   // ~70초). COLMAP 공식 권장대로 500장 넘으면 sequential_matcher(O(n), 촬영 순서로만 인접 비교)로
   // 바꾼다 -- 어차피 iPhone 스캔은 걸어다니며 순서대로 찍은 영상이라 순차 매칭이 자연스럽다.
@@ -120,7 +120,17 @@ trap 'echo "##JOB_ERROR## exit_code=$? at line $LINENO: $BASH_COMMAND" >> "$LOG"
 command -v colmap >/dev/null || { echo "##JOB_ERROR## colmap이 WSL PATH에 없습니다" >> "$LOG"; exit 1; }
 
 echo "##STAGE## colmap_running" >> "$LOG"
-cd "${outputColmapWsl}"
+
+# Windows 드라이브 마운트(9p)는 SQLite처럼 작은 쓰기가 잦은 작업에서 굉장히 느리다(실측: 1814장
+# 스캔에서 feature_extractor/matcher가 database.db 쓰는 후처리만 각각 몇십 분씩 걸림, 프로세스는
+# 안 멈췄지만 디스크 대기(D) 상태였음) -- COLMAP 작업 전체를 WSL 네이티브 저장소($WORK)에서 하고,
+# 정제된 결과(작은 텍스트 sparse 모델)만 Windows 쪽에 디버깅용으로 남긴다.
+WORK="${workWsl}"
+echo "##STEP## copy_to_native" >> "$LOG"
+rm -rf "$WORK"
+mkdir -p "$WORK"
+cp -r "${outputColmapWsl}/images" "$WORK/images"
+cd "$WORK"
 
 echo "##STEP## feature_extractor" >> "$LOG"
 colmap feature_extractor --database_path database.db --image_path images \\
@@ -148,11 +158,20 @@ colmap bundle_adjuster --input_path sparse/refined_points --output_path sparse/r
 echo "##STEP## model_converter" >> "$LOG"
 colmap model_converter --input_path sparse/refined --output_path sparse/refined --output_type TXT >> "$LOG" 2>&1
 
+echo "##STEP## copy_results_back" >> "$LOG"
+mkdir -p "${outputColmapWsl}/sparse"
+rm -rf "${outputColmapWsl}/sparse/refined"
+cp -r sparse/refined "${outputColmapWsl}/sparse/refined"
+
 echo "##STEP## copy_to_dataset" >> "$LOG"
 mkdir -p "${datasetWsl}/sparse"
 rm -rf "${datasetWsl}/images" "${datasetWsl}/sparse/0"
 cp -r images "${datasetWsl}/images"
 cp -r sparse/refined "${datasetWsl}/sparse/0"
+
+echo "##STEP## cleanup_native_work" >> "$LOG"
+cd /
+rm -rf "$WORK"
 
 echo "##JOB_STAGE_DONE## colmap" >> "$LOG"
 `;
@@ -489,6 +508,7 @@ export async function createDigitalTwinTrainingRouter({ repoRoot, dataDir }) {
           outputColmapWsl: toWslPath(outputColmapDir),
           scanWsl: toWslPath(scan.dir),
           datasetWsl: `$HOME/datasets/${name}`, // 따옴표 안 ~ 는 bash가 확장 안 해줌 -- $HOME 사용 (startTrainStage 쪽 주석 참고)
+          workWsl: `$HOME/colmap_work/${name}`, // COLMAP 작업 전체를 여기(WSL 네이티브)에서 하고 끝나면 지운다
           imageCount: scan.imageCount,
         }),
         'utf-8'
